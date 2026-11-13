@@ -1271,6 +1271,17 @@
     </div>
 </div>
 
+    <div class="modal-overlay" id="attCancelModal">
+    <div class="modal-box" style="max-width:460px; text-align:left;">
+        <h3 style="margin-bottom:6px; color:#1e293b;">🗑 출퇴근 취소 이력</h3>
+        <p id="attCancelTarget" style="font-size:13px; color:#64748b; margin-bottom:12px;"></p>
+        <div id="attCancelBody" style="max-height:340px; overflow:auto;"></div>
+        <div style="text-align:center; margin-top:14px;">
+            <button class="btn btn-secondary" onclick="closeAttCancel()">닫기</button>
+        </div>
+    </div>
+</div>
+
     <div class="modal-overlay" id="attEditModal">
     <div class="modal-box" style="max-width:380px;">
         <h3 style="margin-bottom:6px; color:#1e293b;">✏️ 출퇴근 시각 수정 (총괄관리자)</h3>
@@ -4633,6 +4644,7 @@
 
     // ===== 출퇴근 통합 관리 모듈 (기록조회 + 연차통합 캘린더 + 범위설정) =====
     let attendanceLogs = [];
+let deletedAttendanceLogs = [];
     let attGeoConfig = { lat: 37.331403, lng: 126.934705, radius: 100, allowedIps: [] };
     let attMap = null, attMarker = null, attCircle = null;
     let attCalendarInstance = null;
@@ -4656,6 +4668,7 @@
                 const data = snap.data() || {};
                 if (data.geoConfig) attGeoConfig = data.geoConfig;
                 if (Array.isArray(data.attendanceLogs)) attendanceLogs = data.attendanceLogs;
+                if (Array.isArray(data.deletedAttendanceLogs)) deletedAttendanceLogs = data.deletedAttendanceLogs;
             }
             if (document.getElementById('page-attendance').classList.contains('active')) {
                 renderAttRecords();
@@ -4741,8 +4754,8 @@
                         <td><strong>${emp.name}</strong></td>
                         <td>${emp.position}</td>
                         <td>${statusHtml}</td>
-                        <td style="font-weight:bold; color:#2563eb;">${inRec ? inRec.time : '-'}${inRec && inRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${targetDate}', '출근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}</td>
-                        <td style="font-weight:bold;">${outRec ? outRec.time : '-'}${outRec && outRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${targetDate}', '퇴근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}</td>
+                        <td style="font-weight:bold; color:#2563eb;">${inRec ? inRec.time : '-'}${inRec && inRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${targetDate}', '출근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}${isSuperAdminMode() && inRec ? ` <span onclick="cancelAttRecord(${emp.id}, '${targetDate}', '출근')" style="font-size:11px; color:#dc2626; cursor:pointer; text-decoration:underline;">(취소)</span>` : ''}${cancelledMark(emp.id, targetDate, '출근')}</td>
+                        <td style="font-weight:bold;">${outRec ? outRec.time : '-'}${outRec && outRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${targetDate}', '퇴근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}${isSuperAdminMode() && outRec ? ` <span onclick="cancelAttRecord(${emp.id}, '${targetDate}', '퇴근')" style="font-size:11px; color:#dc2626; cursor:pointer; text-decoration:underline;">(취소)</span>` : ''}${cancelledMark(emp.id, targetDate, '퇴근')}</td>
                         <td>${inRec ? inRec.method : '-'}</td>
                         <td>${outRec ? outRec.method : '-'}</td>
                         <td><button type="button" class="action-btn blue" style="padding:4px 8px; font-size:12px;" onclick="copyEmployeeLink(${emp.id})">📱 링크</button></td>
@@ -4768,7 +4781,7 @@
             .filter(e => !e.retireDate && (!deptFilter || e.dept === deptFilter) && (!nameFilter || String(e.name || '').includes(nameFilter)))
             .sort((a, b) => (a.no || 999) - (b.no || 999));
 
-        const rows = [['날짜', '번호', '부서', '이름', '직급', '휴가여부', '출근시각', '퇴근시각', '출근인증', '퇴근인증', '수정여부', '수정이력']];
+        const rows = [['날짜', '번호', '부서', '이름', '직급', '휴가여부', '출근시각', '퇴근시각', '출근인증', '퇴근인증', '수정여부', '수정이력', '취소여부', '취소이력']];
         dates.forEach(targetDate => {
             sortedEmps.forEach(emp => {
                 const inRec = attendanceLogs.find(l => l.empId === emp.id && l.date === targetDate && l.type === '출근');
@@ -4788,7 +4801,9 @@
                     inRec ? inRec.method : '',
                     outRec ? outRec.method : '',
                     edit,
-                    hist
+                    hist,
+                    cancelledItems(emp.id, targetDate, null).length ? 'Y' : '',
+                    cancelHistText(emp.id, targetDate)
                 ]);
             });
         });
@@ -5382,6 +5397,98 @@ function attHistoryText(rec, label) {
     return rec.history.map(h =>
         `${label} ${h.from || '없음'}→${h.to} (사유: ${h.reason || '-'}, ${h.by || '-'}, ${h.at ? new Date(h.at).toLocaleString('ko-KR') : '-'})`
     ).join(' | ');
+}
+
+// ===== 출퇴근 기록 취소 (총괄관리자 전용, 삭제 이력 보관) =====
+async function cancelAttRecord(empId, date, type) {
+    if (!isSuperAdminMode()) { alert('총괄관리자만 취소할 수 있습니다.'); return; }
+    if (!firestoreEnabled || !firestoreDb) { alert('클라우드 저장소가 연결되지 않아 취소할 수 없습니다.'); return; }
+
+    const emp = employees.find(e => e.id === empId);
+    const who = emp ? `${emp.name}` : '';
+    if (!confirm(`${date} ${type} 기록(${who})을 취소할까요?\n취소된 기록은 삭제 이력에 남습니다.`)) return;
+    const reason = (prompt('취소 사유를 입력하세요 (필수)') || '').trim();
+    if (!reason) { alert('취소 사유가 없어 취소하지 않았습니다.'); return; }
+
+    const ref = firestoreDb.collection(FIRESTORE_COLLECTION).doc('attendanceStore');
+    try {
+        await firestoreDb.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            const arr = snap.exists && Array.isArray(snap.data().attendanceLogs) ? [...snap.data().attendanceLogs] : [];
+            const deleted = snap.exists && Array.isArray(snap.data().deletedAttendanceLogs) ? [...snap.data().deletedAttendanceLogs] : [];
+
+            if (type === '출근' && arr.some(l => l.empId === empId && l.date === date && l.type === '퇴근')) {
+                throw new Error('퇴근 기록을 먼저 취소해야 출근을 취소할 수 있습니다.');
+            }
+            const idx = arr.findIndex(l => l.empId === empId && l.date === date && l.type === type);
+            if (idx < 0) throw new Error('취소할 기록이 없습니다.');
+
+            const removed = arr.splice(idx, 1)[0];
+            deleted.push({ record: removed, reason, by: '총괄관리자', at: new Date().toISOString() });
+
+            tx.set(ref, {
+                attendanceLogs: arr,
+                deletedAttendanceLogs: deleted,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        });
+
+        const fresh = await ref.get();
+        attendanceLogs = fresh.exists && Array.isArray(fresh.data().attendanceLogs) ? fresh.data().attendanceLogs : [];
+        renderAttRecords();
+        if (typeof renderAttCalendar === 'function') renderAttCalendar();
+        deletedAttendanceLogs = fresh.exists && Array.isArray(fresh.data().deletedAttendanceLogs) ? fresh.data().deletedAttendanceLogs : [];
+        renderAttRecords();
+        alert('기록이 취소되었습니다. 직원은 다시 출퇴근을 기록할 수 있습니다.');
+    } catch (e) {
+        console.error('[출퇴근 취소] 실패:', e);
+        alert('취소 실패: ' + e.message);
+    }
+}
+
+// ===== 취소 이력 표시 / 조회 =====
+function cancelledItems(empId, date, type) {
+    return deletedAttendanceLogs.filter(d => d.record && d.record.empId === empId && d.record.date === date && (!type || d.record.type === type));
+}
+
+function cancelledMark(empId, date, type) {
+    const items = cancelledItems(empId, date, type);
+    if (items.length === 0) return '';
+    return ` <span onclick="openAttCancel(${empId}, '${date}', '${type}')" style="font-size:11px; color:#dc2626; cursor:pointer; text-decoration:underline;">(취소이력)</span>`;
+}
+
+function cancelHistText(empId, date) {
+    return ['출근', '퇴근'].map(t => cancelledItems(empId, date, t).map(d =>
+        `${t} ${d.record.time || ''} (사유: ${d.reason || '-'}, ${d.by || '-'}, ${d.at ? new Date(d.at).toLocaleString('ko-KR') : '-'})`
+    ).join(' | ')).filter(Boolean).join(' / ');
+}
+
+function openAttCancel(empId, date, type) {
+    const emp = employees.find(e => e.id === empId);
+    const items = cancelledItems(empId, date, type);
+    if (items.length === 0) { alert('취소 이력이 없습니다.'); return; }
+    attEl('attCancelTarget').textContent = `${date} · ${type} · ${emp ? '[' + emp.dept + '] ' + emp.name : ''}`;
+    const body = attEl('attCancelBody');
+    body.innerHTML = '';
+    items.forEach((d, i) => {
+        const box = document.createElement('div');
+        box.style.cssText = 'border:1px solid #fecaca; border-radius:8px; padding:10px 12px; margin-bottom:8px; font-size:13px; line-height:1.6;';
+        const title = document.createElement('div');
+        title.style.fontWeight = '700';
+        title.textContent = `${i + 1}. 취소된 ${type} 시각: ${d.record.time || '-'} (${d.record.method || '-'})`;
+        const reason = document.createElement('div');
+        reason.textContent = `사유: ${d.reason || '-'}`;
+        const meta = document.createElement('div');
+        meta.style.color = '#64748b';
+        meta.textContent = `${d.by || '-'} · ${d.at ? new Date(d.at).toLocaleString('ko-KR') : '-'}`;
+        box.append(title, reason, meta);
+        body.appendChild(box);
+    });
+    attEl('attCancelModal').classList.add('active');
+}
+
+function closeAttCancel() {
+    attEl('attCancelModal').classList.remove('active');
 }
 
 // 직원 한 명의 모바일용 링크를 만들어 복사 (표의 행 버튼에서 호출)
