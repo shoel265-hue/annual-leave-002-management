@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="출퇴근">
+<meta name="theme-color" content="#f1f5f9">
+<title>현장 출퇴근 체크</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, "Malgun Gothic", sans-serif; }
+  body { background: #f1f5f9; color: #1e293b; min-height: 100vh; padding: 16px; padding-top: max(16px, env(safe-area-inset-top)); padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .wrap { max-width: 460px; margin: 0 auto; }
+  .card { background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 14px; }
+  h1 { font-size: 20px; font-weight: 800; }
+  .date { font-size: 14px; color: #64748b; margin-top: 4px; }
+  .clock { font-size: 34px; font-weight: 800; color: #2563eb; margin: 14px 0 16px; }
+  .emp-box { display: flex; justify-content: space-between; gap: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+  .emp-box .k { font-size: 12px; color: #64748b; }
+  .emp-box .v { font-size: 16px; font-weight: 700; margin-top: 2px; }
+  .emp-box .v.right { text-align: right; }
+  .check { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+  .check-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; padding: 4px 0; }
+  .check-info { font-size: 12px; color: #64748b; margin-top: 6px; line-height: 1.5; word-break: break-all; }
+  .badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+  .badge.ok { background: #dcfce7; color: #15803d; }
+  .badge.bad { background: #fee2e2; color: #b91c1c; }
+  .badge.wait { background: #e2e8f0; color: #475569; }
+  .punch-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  button { font-family: inherit; }
+  .btn { height: 84px; border: none; border-radius: 14px; font-size: 20px; font-weight: 800; color: #fff; cursor: pointer; }
+  .btn-in { background: #2563eb; }
+  .btn-out { background: #7c3aed; }
+  .btn:disabled { background: #cbd5e1; color: #94a3b8; cursor: default; }
+  .btn-sub { width: 100%; height: 46px; margin-top: 12px; border: none; border-radius: 12px; background: #e2e8f0; color: #334155; font-size: 15px; font-weight: 700; cursor: pointer; }
+  .btn-sub:disabled { opacity: 0.5; }
+  .msg { min-height: 22px; margin-top: 12px; font-size: 14px; text-align: center; font-weight: 600; line-height: 1.5; }
+  .ok-text { color: #059669; }
+  .err-text { color: #dc2626; }
+  h2 { font-size: 16px; font-weight: 800; margin-bottom: 10px; }
+  .rec { display: flex; justify-content: space-between; font-size: 14px; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+  .rec:last-child { border-bottom: none; }
+  .rec .t { font-weight: 700; }
+  .rec .m { color: #64748b; font-size: 12px; }
+  .empty { font-size: 14px; color: #94a3b8; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 오류 안내 -->
+  <div class="card hidden" id="errorCard">
+    <h1>출퇴근 체크</h1>
+    <p class="msg err-text" id="errorText"></p>
+  </div>
+
+  <!-- 메인 화면 -->
+  <div id="mainArea" class="hidden">
+    <div class="card">
+      <h1>현장 출퇴근 체크</h1>
+      <div class="date" id="todayText"></div>
+      <div class="clock" id="clock"></div>
+
+      <div class="emp-box">
+        <div>
+          <div class="k">소속</div>
+          <div class="v" id="empDept">-</div>
+        </div>
+        <div>
+          <div class="k" style="text-align:right;">작업자 성명</div>
+          <div class="v right" id="empName">-</div>
+        </div>
+      </div>
+
+      <div class="check">
+        <div class="check-row">
+          <span>📶 Wi-Fi 공인 IP 인증</span>
+          <span class="badge wait" id="ipBadge">확인 중...</span>
+        </div>
+        <div class="check-row" style="margin-top:6px;">
+          <span>📍 <span id="gpsText">GPS 반경 인증</span></span>
+          <span class="badge wait" id="gpsBadge">확인 중...</span>
+        </div>
+        <div class="check-info" id="checkInfo">접속 IP / 기준점 거리 확인 중</div>
+      </div>
+
+      <div class="punch-row">
+        <button class="btn btn-in" id="btnIn" disabled>출근하기</button>
+        <button class="btn btn-out" id="btnOut" disabled>퇴근하기</button>
+      </div>
+      <button class="btn-sub" id="btnRecheck">🔄 현재 위치 / Wi-Fi 재확인</button>
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>오늘의 출퇴근 기록</h2>
+      <div id="recList"><div class="empty">아직 기록이 없습니다.</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAPNcc4SCnTNvmJAGYkMbiZXgeBa_OPPw",
+  authDomain: "facility-portal-companyb.firebaseapp.com",
+  databaseURL: "https://facility-portal-companyb-default-rtdb.firebaseio.com",
+  projectId: "facility-portal-companyb",
+  storageBucket: "facility-portal-companyb.firebasestorage.app",
+  messagingSenderId: "597488025375",
+  appId: "1:597488025375:web:878b3257116b8c511dba2a",
+  measurementId: "G-JW01T26RFB"
+};
+const COLLECTION = 'annual_system';
+
+let db = null;
+let employees = [];
+let geo = null;          // { lat, lng, radius, allowedIps }
+let logs = [];
+let emp = null;
+let lastCheck = null;    // { ok, geoOk, ipOk, ip, dist }
+let busy = false;
+
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, '0');
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+function nowStr() {
+  const d = new Date();
+  return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+function tickClock() {
+  const d = new Date();
+  $('clock').textContent = `${pad(d.getHours())}시 ${pad(d.getMinutes())}분 ${pad(d.getSeconds())}초`;
+  $('todayText').textContent = d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+}
+
+function setMsg(text, ok) {
+  const m = $('msg');
+  m.textContent = text;
+  m.className = 'msg ' + (ok ? 'ok-text' : 'err-text');
+}
+
+function showError(text) {
+  $('mainArea').classList.add('hidden');
+  $('errorText').textContent = text;
+  $('errorCard').classList.remove('hidden');
+}
+
+function setBadge(id, text, cls) {
+  const b = $(id);
+  b.textContent = text;
+  b.className = 'badge ' + cls;
+}
+
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function getPos() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error('GPS 미지원'));
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => reject(new Error('위치 권한 거부')),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  });
+}
+
+async function getIp() {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    const r = await fetch('https://api.ipify.org?format=json', { signal: ctrl.signal, cache: 'no-store' });
+    clearTimeout(t);
+    const j = await r.json();
+    return j.ip || null;
+  } catch (e) { return null; }
+}
+
+// 위치·IP 확인 후 화면 배지 갱신 (반경 안이거나 허용된 공인 IP이면 통과)
+async function runLocationCheck() {
+  setBadge('ipBadge', '확인 중...', 'wait');
+  setBadge('gpsBadge', '확인 중...', 'wait');
+
+  let geoOk = false, dist = null;
+  if (geo) {
+    try {
+      const p = await getPos();
+      dist = Math.round(haversine(p.lat, p.lng, Number(geo.lat), Number(geo.lng)));
+      geoOk = dist <= Number(geo.radius || 100);
+    } catch (e) { /* 위치 실패 */ }
+  }
+  const ip = await getIp();
+  const ipOk = !!ip && !!geo && (geo.allowedIps || []).includes(ip);
+
+  lastCheck = { ok: geoOk || ipOk, geoOk, ipOk, ip, dist };
+
+  setBadge('ipBadge', ipOk ? '인증 완료' : '미일치 (외부망)', ipOk ? 'ok' : 'bad');
+  setBadge('gpsBadge', geoOk ? '확인 완료' : (dist !== null ? '반경 밖' : '위치 미확인'), geoOk ? 'ok' : 'bad');
+  $('gpsText').textContent = dist !== null
+    ? `GPS 반경 인증 (${dist}m ${geoOk ? '이내' : '초과'})`
+    : 'GPS 반경 인증';
+  $('checkInfo').textContent =
+    `접속 IP: ${ip || '확인 불가'} / 기준점 거리: ${dist !== null ? dist + 'm' : '미측정'}`;
+
+  renderButtons();
+  return lastCheck;
+}
+
+function todayRecs() {
+  return logs.filter(l => l.empId === emp.id && l.date === todayStr());
+}
+
+function renderButtons() {
+  if (!emp) return;
+  const recs = todayRecs();
+  const inR = recs.find(l => l.type === '출근');
+  const outR = recs.find(l => l.type === '퇴근');
+  const canPunch = !!lastCheck && lastCheck.ok && !busy;
+
+  $('btnIn').disabled = !canPunch || !!inR;
+  $('btnOut').disabled = !canPunch || !inR || !!outR;
+  $('btnRecheck').disabled = busy;
+  renderRecords(recs);
+}
+
+function renderRecords(recs) {
+  const box = $('recList');
+  box.innerHTML = '';
+  if (recs.length === 0) {
+    box.innerHTML = '<div class="empty">아직 기록이 없습니다.</div>';
+    return;
+  }
+  ['출근', '퇴근'].forEach(type => {
+    const r = recs.find(x => x.type === type);
+    if (!r) return;
+    const row = document.createElement('div');
+    row.className = 'rec';
+    const left = document.createElement('div');
+    left.innerHTML = `<div class="t">${type}</div><div class="m">${r.method || ''}</div>`;
+    const right = document.createElement('div');
+    right.className = 't';
+    right.textContent = r.time;
+    row.appendChild(left);
+    row.appendChild(right);
+    box.appendChild(row);
+  });
+}
+
+async function punch(type) {
+  if (busy || !emp) return;
+  busy = true;
+  renderButtons();
+  setMsg('위치와 Wi-Fi를 확인하는 중입니다...', true);
+
+  try {
+    const chk = await runLocationCheck();
+    if (!chk.ok) {
+      setMsg('사업장 반경 또는 사업장 공인 IP 조건이 맞지 않아 기록할 수 없습니다.', false);
+      return;
+    }
+
+    // 다른 기기에서 찍은 기록까지 최신으로 반영
+    const snap = await db.collection(COLLECTION).doc('attendanceStore').get();
+    logs = snap.exists && Array.isArray(snap.data().attendanceLogs) ? snap.data().attendanceLogs : [];
+
+    const today = todayStr();
+    const has = t => logs.some(l => l.empId === emp.id && l.date === today && l.type === t);
+    if (type === '출근' && has('출근')) { setMsg('오늘은 이미 출근 기록이 있습니다.', false); return; }
+    if (type === '퇴근' && !has('출근')) { setMsg('출근 기록이 없어 퇴근을 기록할 수 없습니다.', false); return; }
+    if (type === '퇴근' && has('퇴근')) { setMsg('오늘은 이미 퇴근 기록이 있습니다.', false); return; }
+
+    const log = {
+      id: `${emp.id}_${today}_${type}_${Date.now()}`,
+      empId: emp.id,
+      date: today,
+      type: type,
+      time: nowStr(),
+      method: chk.geoOk && chk.ipOk ? 'GPS+IP' : (chk.geoOk ? 'GPS' : 'IP'),
+      dist: chk.dist,
+      ip: chk.ip
+    };
+
+    await db.collection(COLLECTION).doc('attendanceStore').set({
+      attendanceLogs: firebase.firestore.FieldValue.arrayUnion(log),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    logs.push(log);
+    setMsg(`✅ ${type} 기록 완료 (${log.time.slice(0, 5)})`, true);
+  } catch (e) {
+    console.error('[출퇴근] 기록 실패:', e);
+    setMsg('기록 실패: ' + e.message, false);
+  } finally {
+    busy = false;
+    renderButtons();
+  }
+}
+
+// 홈 화면에 추가했을 때 직원 이름이 붙도록 설정
+function setHomeName(label, shortName) {
+  document.title = label;
+  const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if (meta) meta.content = label;
+  const manifest = { name: label, short_name: shortName, start_url: location.href, display: 'standalone' };
+  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+  let ml = document.querySelector('link[rel="manifest"]');
+  if (!ml) { ml = document.createElement('link'); ml.rel = 'manifest'; document.head.appendChild(ml); }
+  ml.href = URL.createObjectURL(blob);
+}
+
+async function init() {
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  const token = new URLSearchParams(location.search).get('t');
+  if (!token) { showError('유효하지 않은 링크입니다. 관리자에게 링크를 다시 요청하세요.'); return; }
+
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+
+    const [dataSnap, attSnap] = await Promise.all([
+      db.collection(COLLECTION).doc('dataStore').get(),
+      db.collection(COLLECTION).doc('attendanceStore').get()
+    ]);
+
+    employees = dataSnap.exists && Array.isArray(dataSnap.data().employees) ? dataSnap.data().employees : [];
+    const att = attSnap.exists ? attSnap.data() : {};
+    geo = att.geoConfig || null;
+    logs = Array.isArray(att.attendanceLogs) ? att.attendanceLogs : [];
+
+    // 토큰으로 직원 찾기 (empTokens: { 사원ID: 토큰 })
+    const entry = Object.entries(att.empTokens || {}).find(([, t]) => t === token);
+    if (!entry) { showError('유효하지 않은 링크입니다. 관리자에게 링크를 다시 요청하세요.'); return; }
+
+    emp = employees.find(e => String(e.id) === String(entry[0]));
+    if (!emp) { showError('등록된 직원 정보를 찾을 수 없습니다. 관리자에게 문의하세요.'); return; }
+  } catch (e) {
+    console.error(e);
+    showError('서버 연결 실패: ' + e.message);
+    return;
+  }
+
+  $('empName').textContent = emp.name + (emp.position ? ' ' + emp.position : '');
+  $('empDept').textContent = emp.dept || '-';
+  setHomeName(`${emp.name} 출퇴근`, emp.name);
+
+  $('mainArea').classList.remove('hidden');
+  if (!geo) setMsg('출근 범위가 아직 설정되지 않았습니다. 관리자에게 문의하세요.', false);
+  await runLocationCheck();
+}
+
+$('btnIn').onclick = () => punch('출근');
+$('btnOut').onclick = () => punch('퇴근');
+$('btnRecheck').onclick = async () => { setMsg('', true); await runLocationCheck(); };
+
+init();
+</script>
+</body>
+</html>
