@@ -1062,7 +1062,7 @@
                         </select>
                         <input type="text" id="attNameFilter" placeholder="이름 검색" oninput="renderAttRecords()" style="width:120px;">
                         <button type="button" class="action-btn blue" onclick="loadAttendanceFromFirestore(true)">🔄 새로고침</button>
-                        <button type="button" class="action-btn" style="border-color:#10b981; color:#059669; background:#ecfdf5;" onclick="downloadAttCsv()">📥 엑셀(CSV)</button>
+                        <button type="button" class="action-btn" style="border-color:#10b981; color:#059669; background:#ecfdf5;" onclick="downloadAttCsv()">📥 엑셀(xlsx)</button>
                     </div>
                 </div>
                 <div class="table-container">
@@ -1080,6 +1080,7 @@
                                 <th>출근 인증</th>
                                 <th>퇴근 인증</th>
                                 <th>모바일 링크</th>
+                                <th>수정</th>
                             </tr>
                         </thead>
                         <tbody id="attRecordsBody"></tbody>
@@ -1259,7 +1260,37 @@
     </div>
 </div>
 
-<div class="modal-overlay" id="adminModal">
+<div class="modal-overlay" id="attHistModal">
+    <div class="modal-box" style="max-width:460px; text-align:left;">
+        <h3 style="margin-bottom:6px; color:#1e293b;">📜 출퇴근 수정 이력</h3>
+        <p id="attHistTarget" style="font-size:13px; color:#64748b; margin-bottom:12px;"></p>
+        <div id="attHistBody" style="max-height:340px; overflow:auto;"></div>
+        <div style="text-align:center; margin-top:14px;">
+            <button class="btn btn-secondary" onclick="closeAttHist()">닫기</button>
+        </div>
+    </div>
+</div>
+
+    <div class="modal-overlay" id="attEditModal">
+    <div class="modal-box" style="max-width:380px;">
+        <h3 style="margin-bottom:6px; color:#1e293b;">✏️ 출퇴근 시각 수정 (총괄관리자)</h3>
+        <p id="attEditTarget" style="font-size:13px; color:#64748b; margin-bottom:12px;"></p>
+        <div style="display:flex; gap:8px; margin-bottom:10px;">
+            <select id="attEditType" onchange="fillAttEditTime()" style="flex:1;">
+                <option value="출근">출근</option>
+                <option value="퇴근">퇴근</option>
+            </select>
+            <input type="time" id="attEditTime" step="1" style="flex:1;">
+        </div>
+        <textarea id="attEditReason" rows="3" placeholder="수정 사유 (필수) 예: 출근 체크 누락" style="width:100%; margin-bottom:12px;"></textarea>
+        <div style="display:flex; gap:10px; justify-content:center;">
+            <button class="btn btn-secondary" onclick="closeAttEdit()">취소</button>
+            <button class="btn btn-primary" onclick="saveAttEdit()">저장</button>
+        </div>
+    </div>
+</div>
+
+    <div class="modal-overlay" id="adminModal">
     <div class="modal-box">
         <h3 style="margin-bottom:10px;">🔒 총괄 관리자 인증</h3>
         <p style="font-size: 13px; color: #64748b; margin-bottom: 15px;">비밀번호를 입력해주세요.</p>
@@ -4675,7 +4706,7 @@
         if (!tbody) return;
 
         if (startDate > endDate) {
-            tbody.innerHTML = '<tr><td colspan="11" style="color:#dc2626;">시작일이 종료일보다 늦을 수 없습니다.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="color:#dc2626;">시작일이 종료일보다 늦을 수 없습니다.</td></tr>';
             return;
         }
 
@@ -4685,7 +4716,7 @@
             .sort((a, b) => (a.no || 999) - (b.no || 999));
 
         if (sortedEmps.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="11" style="color:#94a3b8;">조회 조건에 해당하는 직원이 없습니다.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="color:#94a3b8;">조회 조건에 해당하는 직원이 없습니다.</td></tr>';
             return;
         }
 
@@ -4710,11 +4741,12 @@
                         <td><strong>${emp.name}</strong></td>
                         <td>${emp.position}</td>
                         <td>${statusHtml}</td>
-                        <td style="font-weight:bold; color:#2563eb;">${inRec ? inRec.time : '-'}</td>
-                        <td style="font-weight:bold;">${outRec ? outRec.time : '-'}</td>
+                        <td style="font-weight:bold; color:#2563eb;">${inRec ? inRec.time : '-'}${inRec && inRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${targetDate}', '출근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}</td>
+                        <td style="font-weight:bold;">${outRec ? outRec.time : '-'}${outRec && outRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${targetDate}', '퇴근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}</td>
                         <td>${inRec ? inRec.method : '-'}</td>
                         <td>${outRec ? outRec.method : '-'}</td>
                         <td><button type="button" class="action-btn blue" style="padding:4px 8px; font-size:12px;" onclick="copyEmployeeLink(${emp.id})">📱 링크</button></td>
+                        <td>${isSuperAdminMode() ? `<button type="button" class="action-btn yellow" style="padding:4px 8px; font-size:12px;" onclick="openAttEdit('${targetDate}', ${emp.id})">✏️ 수정</button>` : '-'}</td>
                     </tr>
                 `);
             });
@@ -4723,6 +4755,10 @@
     }
 
     function downloadAttCsv() {
+        if (typeof XLSX === 'undefined') {
+            alert('엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');
+            return;
+        }
         const startDate = document.getElementById('attStartDate').value || getAttTodayStr();
         const endDate = document.getElementById('attEndDate').value || startDate;
         const deptFilter = document.getElementById('attDeptFilter').value;
@@ -4732,20 +4768,35 @@
             .filter(e => !e.retireDate && (!deptFilter || e.dept === deptFilter) && (!nameFilter || String(e.name || '').includes(nameFilter)))
             .sort((a, b) => (a.no || 999) - (b.no || 999));
 
-        let csv = '\uFEFF날짜,번호,부서,이름,직급,휴가여부,출근시각,퇴근시각,출근인증,퇴근인증\n';
+        const rows = [['날짜', '번호', '부서', '이름', '직급', '휴가여부', '출근시각', '퇴근시각', '출근인증', '퇴근인증', '수정여부', '수정이력']];
         dates.forEach(targetDate => {
             sortedEmps.forEach(emp => {
                 const inRec = attendanceLogs.find(l => l.empId === emp.id && l.date === targetDate && l.type === '출근');
                 const outRec = attendanceLogs.find(l => l.empId === emp.id && l.date === targetDate && l.type === '퇴근');
                 const leaveRec = (emp.history || []).find(h => isApprovedLeave(h) && h.start <= targetDate && (h.end || h.start) >= targetDate);
-                csv += `${targetDate},${emp.no || ''},${emp.dept},${emp.name},${emp.position},${leaveRec ? leaveRec.type : ''},${inRec ? inRec.time : ''},${outRec ? outRec.time : ''},"${inRec ? inRec.method : ''}","${outRec ? outRec.method : ''}"\n`;
+                const edit = (inRec && inRec.edited) || (outRec && outRec.edited) ? 'Y' : '';
+                const hist = [attHistoryText(inRec, '출근'), attHistoryText(outRec, '퇴근')].filter(Boolean).join(' / ');
+                rows.push([
+                    targetDate,
+                    emp.no || '',
+                    emp.dept || '',
+                    emp.name || '',
+                    emp.position || '',
+                    leaveRec ? leaveRec.type : '',
+                    inRec ? inRec.time : '',
+                    outRec ? outRec.time : '',
+                    inRec ? inRec.method : '',
+                    outRec ? outRec.method : '',
+                    edit,
+                    hist
+                ]);
             });
         });
 
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-        a.download = `출퇴근기록_${startDate}_${endDate}.csv`;
-        a.click();
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '출퇴근기록');
+        XLSX.writeFile(wb, `출퇴근기록_${startDate}_${endDate}.xlsx`);
     }
 
     function renderAttCalendar() {
@@ -5208,6 +5259,129 @@ async function copyPunchShortcut() {
     } catch (e) {
         setPunchMsg('링크 생성 실패: ' + e.message, true);
     }
+}
+
+// ===== 출퇴근 시각 수정 (총괄관리자 전용, 기간 제한 없음) =====
+let attEditCtx = null;
+
+function attEl(id) { return document.getElementById(id); }
+
+function openAttEdit(date, empId) {
+    if (!isSuperAdminMode()) { alert('총괄관리자만 수정할 수 있습니다.'); return; }
+    const emp = employees.find(e => e.id === empId);
+    if (!emp) return;
+    attEditCtx = { date, empId };
+    attEl('attEditTarget').textContent = `${date} · [${emp.dept}] ${emp.name} ${emp.position || ''}`;
+    attEl('attEditType').value = '출근';
+    attEl('attEditReason').value = '';
+    fillAttEditTime();
+    attEl('attEditModal').classList.add('active');
+}
+
+function fillAttEditTime() {
+    if (!attEditCtx) return;
+    const type = attEl('attEditType').value;
+    const rec = attendanceLogs.find(l => l.empId === attEditCtx.empId && l.date === attEditCtx.date && l.type === type);
+    attEl('attEditTime').value = rec && rec.time ? rec.time.slice(0, 8) : '';
+}
+
+function closeAttEdit() {
+    attEl('attEditModal').classList.remove('active');
+    attEditCtx = null;
+}
+
+async function saveAttEdit() {
+    if (!isSuperAdminMode()) { alert('총괄관리자만 수정할 수 있습니다.'); return; }
+    if (!attEditCtx) return;
+    if (!firestoreEnabled || !firestoreDb) { alert('클라우드 저장소가 연결되지 않아 수정할 수 없습니다.'); return; }
+
+    const type = attEl('attEditType').value;
+    let time = attEl('attEditTime').value;
+    const reason = attEl('attEditReason').value.trim();
+    if (!time) { alert('시각을 입력하세요.'); return; }
+    if (!reason) { alert('수정 사유를 입력하세요.'); return; }
+    if (time.length === 5) time += ':00';
+
+    const ctx = attEditCtx;
+    const ref = firestoreDb.collection(FIRESTORE_COLLECTION).doc('attendanceStore');
+    try {
+        await firestoreDb.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            const arr = snap.exists && Array.isArray(snap.data().attendanceLogs) ? [...snap.data().attendanceLogs] : [];
+            const idx = arr.findIndex(l => l.empId === ctx.empId && l.date === ctx.date && l.type === type);
+            const at = new Date().toISOString();
+            const by = '총괄관리자';
+
+            if (idx >= 0) {
+                const old = arr[idx];
+                const history = Array.isArray(old.history) ? old.history.slice() : [];
+                history.push({ from: old.time || null, to: time, reason, by, at });
+                arr[idx] = { ...old, time, edited: true, history };
+            } else {
+                arr.push({
+                    id: `${ctx.empId}_${ctx.date}_${type}_${Date.now()}`,
+                    empId: ctx.empId, date: ctx.date, type, time,
+                    method: '관리자 수정', dist: null, ip: null,
+                    manual: true, edited: true,
+                    history: [{ from: null, to: time, reason, by, at }]
+                });
+            }
+
+            tx.set(ref, {
+                attendanceLogs: arr,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        });
+
+        const fresh = await ref.get();
+        attendanceLogs = fresh.exists && Array.isArray(fresh.data().attendanceLogs) ? fresh.data().attendanceLogs : [];
+        closeAttEdit();
+        renderAttRecords();
+        if (typeof renderAttCalendar === 'function') renderAttCalendar();
+        alert('수정이 저장되었습니다.');
+    } catch (e) {
+        console.error('[출퇴근 수정] 실패:', e);
+        alert('수정 실패: ' + e.message);
+    }
+}
+
+// ===== 수정 이력 보기 / 엑셀용 이력 문자열 =====
+function openAttHistory(empId, date, type) {
+    const emp = employees.find(e => e.id === empId);
+    const rec = attendanceLogs.find(l => l.empId === empId && l.date === date && l.type === type);
+    if (!rec || !rec.edited || !Array.isArray(rec.history) || rec.history.length === 0) {
+        alert('수정 이력이 없습니다.');
+        return;
+    }
+    attEl('attHistTarget').textContent = `${date} · ${type} · ${emp ? '[' + emp.dept + '] ' + emp.name : ''}`;
+    const body = attEl('attHistBody');
+    body.innerHTML = '';
+    rec.history.forEach((h, i) => {
+        const box = document.createElement('div');
+        box.style.cssText = 'border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin-bottom:8px; font-size:13px; line-height:1.6;';
+        const title = document.createElement('div');
+        title.style.fontWeight = '700';
+        title.textContent = `${i + 1}. ${h.from || '(기록 없음)'} → ${h.to}`;
+        const reason = document.createElement('div');
+        reason.textContent = `사유: ${h.reason || '-'}`;
+        const meta = document.createElement('div');
+        meta.style.color = '#64748b';
+        meta.textContent = `${h.by || '-'} · ${h.at ? new Date(h.at).toLocaleString('ko-KR') : '-'}`;
+        box.append(title, reason, meta);
+        body.appendChild(box);
+    });
+    attEl('attHistModal').classList.add('active');
+}
+
+function closeAttHist() {
+    attEl('attHistModal').classList.remove('active');
+}
+
+function attHistoryText(rec, label) {
+    if (!rec || !rec.edited || !Array.isArray(rec.history)) return '';
+    return rec.history.map(h =>
+        `${label} ${h.from || '없음'}→${h.to} (사유: ${h.reason || '-'}, ${h.by || '-'}, ${h.at ? new Date(h.at).toLocaleString('ko-KR') : '-'})`
+    ).join(' | ');
 }
 
 // 직원 한 명의 모바일용 링크를 만들어 복사 (표의 행 버튼에서 호출)
