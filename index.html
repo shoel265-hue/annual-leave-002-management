@@ -495,6 +495,7 @@
         .att-badge-work { background: #fef3c7; color: #b45309; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
         .att-badge-none { background: #e2e8f0; color: #475569; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
         .att-badge-leave { background: #dbeafe; color: #1d4ed8; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .att-badge-off { background: #f3e8ff; color: #6b21a8; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
     </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -684,7 +685,7 @@
             <button class="tab-btn" id="tab2" onclick="switchTab('personal')">👤 개인 사용현황</button>
             <button class="tab-btn admin-tab" id="tab3" onclick="requestAdminAccess('dashboard')">🔒 전체 대시보드 (관리자용)</button>
             <button class="tab-btn calendar-tab" id="tab4" onclick="switchTab('calendar')">📅 연차 캘린더 (전체 현황)</button>
-            <button class="tab-btn att-main-tab" id="tab5" onclick="requestAdminAccess('attendance')">⏱️ 출퇴근 관리</button>
+            <button class="tab-btn att-main-tab" id="tab5" onclick="openAttendanceTab()">⏱️ 출퇴근 캘린더/관리</button>
         </div>
 
         <div class="admin-year-container" id="adminYearContainer">
@@ -920,6 +921,7 @@
                     <label>입사일</label>
                     <input type="date" id="newJoinDate" required>
                 </div>
+
                 <div class="btn-group full" style="margin-top:0;">
                     <button type="submit" class="btn btn-primary" style="width: 100%;">+ 사원 등록</button>
                 </div>
@@ -931,7 +933,7 @@
                 <summary><h2>📥 엑셀 일괄 등록 (직원 명부 / 연차 사용내역)</h2></summary>
                 <div class="fold-body">
                     <p style="font-size:13px; color:#64748b; margin-bottom:8px; line-height:1.6;">
-                        <b style="color:#334155;">[직원 명부]</b> 첫 줄에 제목(번호, 부서/팀, 이름, 직급, 주민번호 또는 생년월일, 입사일, 퇴사일, 구분, 이전년도 사용)을 두고 둘째 줄부터 직원 정보를 입력한 .xlsx 또는 .csv 파일을 올려 주세요.<br>
+                        <b style="color:#334155;">[직원 명부]</b> 첫 줄에 제목(번호, 부서/팀, 이름, 직급, 주민번호 또는 생년월일, 입사일, 퇴사일, 구분, 이전년도 사용, 근무형태, 교대기준일)을 두고 둘째 줄부터 직원 정보를 입력한 .xlsx 또는 .csv 파일을 올려 주세요.<br>
                         주민번호를 올리면 앞 7자리(생년월일 + 성별 구분)만 읽어 저장하고 뒷자리는 저장하지 않습니다. 번호·퇴사일·구분·이전년도 사용은 비워도 됩니다. 구분을 비우면 입사연도 기준으로 자동 분류됩니다. 이름과 생년월일이 같은 직원은 정보를 갱신합니다.
                     </p>
                     <p style="font-size:13px; color:#64748b; margin-bottom:12px; line-height:1.6;">
@@ -1039,10 +1041,10 @@
         <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; border-bottom:1px solid #e2e8f0; padding-bottom:15px;">
                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                    <h2 style="margin:0;">⏱️ 출퇴근 통합 관리 (관리자 전용)</h2>
-                    <button type="button" class="action-btn blue" onclick="openPunchPage()">📍 출퇴근 체크</button>
+                    <h2 style="margin:0;" id="attMainTitle">⏱️ 출퇴근 통합 관리 (관리자 전용)</h2>
+                    <button type="button" class="action-btn blue" id="attPunchBtnTop" onclick="openPunchPage()">📍 출퇴근 체크</button>
                 </div>
-                <div class="att-subnav no-print" style="margin-bottom:0;">
+                <div class="att-subnav no-print" id="attSubNavBar" style="margin-bottom:0;">
                     <button type="button" class="att-subtab-btn active" id="attSubBtn-records" onclick="switchAttSubTab('records')">📋 출퇴근 기록보기</button>
                     <button type="button" class="att-subtab-btn" id="attSubBtn-calendar" onclick="switchAttSubTab('calendar')">📅 출퇴근 캘린더 (연차 통합)</button>
                     <button type="button" class="att-subtab-btn" id="attSubBtn-geofence" onclick="switchAttSubTab('geofence')">📍 출근범위 설정</button>
@@ -1060,6 +1062,11 @@
                         <select id="attDeptFilter" onchange="renderAttRecords()">
                             <option value="">전체 부서</option>
                         </select>
+                        <select id="attWorkTypeFilter" onchange="renderAttRecords()">
+                            <option value="">전체 근무형태</option>
+                            <option value="일반직">일반직</option>
+                            <option value="교대직">교대직</option>
+                        </select>
                         <input type="text" id="attNameFilter" placeholder="이름 검색" oninput="renderAttRecords()" style="width:120px;">
                         <button type="button" class="action-btn blue" onclick="loadAttendanceFromFirestore(true)">🔄 새로고침</button>
                         <button type="button" class="action-btn" style="border-color:#10b981; color:#059669; background:#ecfdf5;" onclick="downloadAttCsv()">📥 엑셀(xlsx)</button>
@@ -1074,6 +1081,7 @@
                                 <th>부서/팀</th>
                                 <th>이름</th>
                                 <th>직급</th>
+                                <th>근무형태</th>
                                 <th>근태 / 연차 상태</th>
                                 <th>출근 시각</th>
                                 <th>퇴근 시각</th>
@@ -1555,9 +1563,28 @@
             switchTab('apply');
         }
 
+        const syncedTeam = (selectedTeam === "전체 (총괄 관리자)") ? '' : selectedTeam;
+
+        const attCalSel = document.getElementById('attCalTeamFilter');
+        if (attCalSel) {
+            if (attCalSel.options.length <= 1 && typeof DEPARTMENT_LIST !== 'undefined') {
+                DEPARTMENT_LIST.forEach(d => {
+                    const o = document.createElement('option');
+                    o.value = d; o.textContent = d;
+                    attCalSel.appendChild(o);
+                });
+            }
+            attCalSel.value = syncedTeam;
+        }
+
+        if (typeof populateCalendarTeamFilter === 'function') populateCalendarTeamFilter();
+        const calTeamSel = document.getElementById('calendarTeamFilter');
+        if (calTeamSel) calTeamSel.value = syncedTeam;
+
         populateEmpSelectOptions(selectedTeam);
         resetApplyForm();
         resetPersonalView();
+        if (typeof renderCalendar === 'function') renderCalendar();
     }
 
     function triggerEmpBirthModal(mode) {
@@ -2397,6 +2424,9 @@
                     valA = a.emp.position; valB = b.emp.position;
                 } else if (sortColumn === 'joinDate') {
                     valA = a.emp.joinDate; valB = b.emp.joinDate;
+                } else if (sortColumn === 'workType') {
+                    valA = (a.emp.workType || '일반직') + (a.emp.shiftBaseDate || '');
+                    valB = (b.emp.workType || '일반직') + (b.emp.shiftBaseDate || '');
                 } else if (sortColumn === 'category') {
                     valA = a.res.category; valB = b.res.category;
                 } else if (sortColumn === 'isRetired') {
@@ -2452,6 +2482,8 @@
             let posCol = isEditing ? `<input type="text" id="edit-pos-${emp.id}" value="${emp.position}" class="edit-table-input" style="width:60px !important;">` : emp.position;
 
             let joinCol = isEditing ? `<input type="date" id="edit-join-${emp.id}" value="${emp.joinDate}" class="table-date-input" style="border-color:#3b82f6;">` : emp.joinDate;
+
+
 
             let editBtnHtml = isEditing
                 ? `<button class="btn btn-primary" style="padding:4px 8px; font-size:11px;" onclick="saveEmpEdit(${emp.id})">저장</button>`
@@ -2518,7 +2550,7 @@
             const historyRows = getDashboardHistoryRows(emp, historyStartDate, historyEndDate, 'all');
 
             detailTr.innerHTML = `
-                <td colspan="20" style="padding: 0;">
+                <td colspan="19" style="padding: 0;">
                     <div class="detail-box">
                         <div class="detail-header" style="flex-wrap: wrap; gap: 10px;">
                             <strong>📌 ${emp.name} (${emp.position}) 님의 ${SYSTEM_BASE_YEAR}년 상세 휴가 내역</strong>
@@ -3402,7 +3434,9 @@
         join: ['입사일', '입사'],
         retire: ['퇴사일', '퇴사'],
         category: ['구분'],
-        prev: ['이전년도사용', '이전년도']
+        prev: ['이전년도사용', '이전년도'],
+        workType: ['근무형태', '근무구분', '교대여부'],
+        shiftBaseDate: ['교대기준일', '기준일', '주간시작일', '첫주간시작일']
     };
 
     function normHeader(h) {
@@ -3542,15 +3576,15 @@
     }
 
     function downloadUploadTemplate() {
-        const header = ['번호', '부서/팀', '이름', '직급', '주민번호(또는 생년월일 6자리)', '입사일', '퇴사일', '구분', '이전년도 사용'];
+        const header = ['번호', '부서/팀', '이름', '직급', '주민번호(또는 생년월일 6자리)', '입사일', '퇴사일', '구분', '이전년도 사용', '근무형태', '교대기준일'];
         const sample = [
-            [1, '관리', '홍길동', '관리소장', '800101-1234567', '2015-01-02', '', '회계', ''],
-            [2, '소방팀', '김영희', '소방팀장', '850815-2345678', '2025-05-01', '', '', ''],
-            [3, '입주사 미화', '박철수', '미화원(여)', '950303-1456789', '2026-05-01', '', '', '']
+            [1, '관리', '홍길동', '관리소장', '800101-1234567', '2015-01-02', '', '회계', '', '일반직', ''],
+            [2, '소방팀', '김영희', '소방팀장', '850815-2345678', '2025-05-01', '', '', '', '교대직', '2026-11-01'],
+            [3, '입주사 미화', '박철수', '미화원(여)', '950303-1456789', '2026-05-01', '', '', '', '일반직', '']
         ];
         if (typeof XLSX !== 'undefined') {
             const ws = XLSX.utils.aoa_to_sheet([header, ...sample]);
-            ws['!cols'] = [{wch: 6}, {wch: 12}, {wch: 10}, {wch: 16}, {wch: 30}, {wch: 12}, {wch: 12}, {wch: 10}, {wch: 14}];
+            ws['!cols'] = [{wch: 6}, {wch: 12}, {wch: 10}, {wch: 16}, {wch: 30}, {wch: 12}, {wch: 12}, {wch: 10}, {wch: 14}, {wch: 12}, {wch: 14}];
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, '직원명부');
             XLSX.writeFile(wb, '업로드_직원명부_양식.xlsx');
@@ -3625,6 +3659,8 @@
             const retireDate = parseDateCell(get(r, 'retire'));
             const catRaw = String(get(r, 'category')).replace(/\s/g, '');
             const prevRaw = get(r, 'prev');
+            const workTypeRaw = String(get(r, 'workType')).replace(/\s/g, '');
+            const shiftBaseRaw = parseDateCell(get(r, 'shiftBaseDate'));
 
             const errs = [];
             if (!validDepts.includes(dept)) errs.push(`부서/팀 "${dept}" 없음`);
@@ -3643,7 +3679,9 @@
 
             const prevYearUsed = parseFloat(prevRaw) || 0;
             const noFromFile = parseInt(get(r, 'no'));
-            const data = {dept, name, position, birth, joinDate, retireDate: retireDate || '', category, prevYearUsed, no: noFromFile};
+            const workType = (workTypeRaw === '교대직' || workTypeRaw === '교대' || workTypeRaw === '교대근무') ? '교대직' : '일반직';
+            const shiftBaseDate = (workType === '교대직' && shiftBaseRaw) ? shiftBaseRaw : '';
+            const data = {dept, name, position, birth, joinDate, retireDate: retireDate || '', category, prevYearUsed, no: noFromFile, workType, shiftBaseDate};
 
             const exist = employees.find(e => e.name === name && String(e.birth || '').slice(0, 6) === birth.slice(0, 6));
             if (exist) toUpdate.push({exist, data});
@@ -3658,7 +3696,7 @@
         if (!confirm(msg + '\n이대로 반영할까요?')) return;
 
         toUpdate.forEach(({exist, data}) => {
-            Object.assign(exist, {dept: data.dept, position: data.position, joinDate: data.joinDate, retireDate: data.retireDate, category: data.category});
+            Object.assign(exist, {dept: data.dept, position: data.position, joinDate: data.joinDate, retireDate: data.retireDate, category: data.category, workType: data.workType, shiftBaseDate: data.shiftBaseDate});
             if (String(data.birth).length > String(exist.birth || '').length) exist.birth = data.birth;
             if (data.prevYearUsed) exist.prevYearUsed = data.prevYearUsed;
         });
@@ -4391,6 +4429,8 @@
             birth: birthIn,
             joinDate: document.getElementById('newJoinDate').value,
             retireDate: "",
+            workType: '일반직',
+            shiftBaseDate: '',
             prevYearUsed: 0,
             settlementLeave: 0,
             history: [],
@@ -4442,11 +4482,37 @@
             document.getElementById('tab5').classList.add('active');
             adminYearContainer.classList.remove('active');
             showPage('page-attendance');
-            switchAttSubTab('records');
+            const isFullAdmin = isSuperAdminMode() && isAdminAuthenticated;
+            const titleEl = document.getElementById('attMainTitle');
+            const punchBtn = document.getElementById('attPunchBtnTop');
+            const subNav = document.getElementById('attSubNavBar');
+            if (isFullAdmin) {
+                if (titleEl) titleEl.innerText = '⏱️ 출퇴근 통합 관리 (관리자 전용)';
+                if (punchBtn) punchBtn.style.display = 'inline-flex';
+                if (subNav) subNav.style.display = 'flex';
+                switchAttSubTab('records');
+            } else {
+                if (titleEl) titleEl.innerText = '📅 전직원 출퇴근 및 연차 캘린더';
+                if (punchBtn) punchBtn.style.display = 'none';
+                if (subNav) subNav.style.display = 'none';
+                switchAttSubTab('calendar');
+            }
+        }
+    }
+
+    function openAttendanceTab() {
+        if (isSuperAdminMode()) {
+            requestAdminAccess('attendance');
+        } else {
+            switchTab('attendance');
         }
     }
 
     function switchAttSubTab(subName) {
+        const isFullAdmin = isSuperAdminMode() && isAdminAuthenticated;
+        if (!isFullAdmin && subName !== 'calendar') {
+            subName = 'calendar';
+        }
         document.querySelectorAll('.att-subtab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.att-subpage').forEach(p => p.classList.remove('active'));
 
@@ -4649,9 +4715,78 @@ let deletedAttendanceLogs = [];
     let attMap = null, attMarker = null, attCircle = null;
     let attCalendarInstance = null;
 
+
+    function getAttPrevDateStr(dateStr) {
+        const d = new Date(dateStr + 'T00:00:00');
+        d.setDate(d.getDate() - 1);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function parseAttDateTime(dateStr, timeStr) {
+        if (!dateStr || !timeStr) return null;
+        const t = timeStr.length === 5 ? timeStr + ':00' : timeStr;
+        const dt = new Date(`${dateStr}T${t}`);
+        return isNaN(dt.getTime()) ? null : dt;
+    }
+
+    function isOver20Hours(inDateStr, inTimeStr, nowMs = Date.now()) {
+        const inDt = parseAttDateTime(inDateStr, inTimeStr);
+        if (!inDt) return false;
+        return (nowMs - inDt.getTime()) >= (20 * 60 * 60 * 1000);
+    }
+
+    function getShiftStatusForInRec(empId, dateStr, inRec, nowMs = Date.now()) {
+        if (!inRec) return { state: 'none', outRec: null, isNextDayOut: false };
+        const sameDayOut = attendanceLogs.find(l => l.empId === empId && l.date === dateStr && l.type === '퇴근');
+        if (sameDayOut) {
+            const isNextDay = !!(sameDayOut.actualDate && sameDayOut.actualDate !== dateStr);
+            return { state: 'done', outRec: sameDayOut, isNextDayOut: isNextDay };
+        }
+        const nextDateStr = (() => {
+            const d = new Date(dateStr + 'T00:00:00');
+            d.setDate(d.getDate() + 1);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        })();
+        const nextDayOut = attendanceLogs.find(l =>
+            l.empId === empId &&
+            l.date === nextDateStr &&
+            l.type === '퇴근' &&
+            (l.shiftDate === dateStr || !attendanceLogs.some(x => x.empId === empId && x.date === nextDateStr && x.type === '출근'))
+        );
+        if (nextDayOut) {
+            return { state: 'done', outRec: nextDayOut, isNextDayOut: true };
+        }
+        if (isOver20Hours(dateStr, inRec.time, nowMs)) {
+            return { state: 'missed', outRec: null, isNextDayOut: false };
+        }
+        return { state: 'working', outRec: null, isNextDayOut: false };
+    }
+
     function getAttTodayStr() {
         const d = new Date();
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    // 교대근무 패턴 판별: 6일 주기 (0,1=주간 / 2,3=야간 / 4,5=비번)
+    function getShiftWorkStatus(emp, dateStr) {
+        const workType = (emp && emp.workType) || '일반직';
+        if (workType !== '교대직') {
+            return { isShift: false, phase: 'normal', label: '일반직', isOffDay: false };
+        }
+        if (!emp.shiftBaseDate) {
+            return { isShift: true, phase: 'unassigned', label: '교대(기준일미지정)', isOffDay: true };
+        }
+        const baseMs = new Date(emp.shiftBaseDate + 'T00:00:00').getTime();
+        const targetMs = new Date(dateStr + 'T00:00:00').getTime();
+        if (isNaN(baseMs) || isNaN(targetMs)) {
+            return { isShift: true, phase: 'unassigned', label: '교대(기준일오류)', isOffDay: true };
+        }
+        const diffDays = Math.floor((targetMs - baseMs) / 86400000);
+        const mod = ((diffDays % 6) + 6) % 6;
+
+        if (mod === 0 || mod === 1) return { isShift: true, phase: 'day', label: '교대(주간)', isOffDay: false };
+        if (mod === 2 || mod === 3) return { isShift: true, phase: 'night', label: '교대(야간)', isOffDay: false };
+        return { isShift: true, phase: 'off', label: '교대(비번)', isOffDay: true };
     }
 
     function isApprovedLeave(h) {
@@ -4710,26 +4845,60 @@ let deletedAttendanceLogs = [];
         return list;
     }
 
+    function updateEmpWorkTypeFromAtt(empId, newWorkType) {
+        if (!isSuperAdminMode()) {
+            alert('총괄관리자만 근무형태를 변경할 수 있습니다.');
+            renderAttRecords();
+            return;
+        }
+        const emp = employees.find(e => e.id === empId);
+        if (!emp) return;
+        emp.workType = newWorkType === '교대직' ? '교대직' : '일반직';
+        if (emp.workType !== '교대직') {
+            emp.shiftBaseDate = '';
+        } else if (!emp.shiftBaseDate) {
+            emp.shiftBaseDate = document.getElementById('attStartDate').value || getAttTodayStr();
+        }
+        saveDataSilent();
+        renderAttRecords();
+        if (typeof renderAttCalendar === 'function') renderAttCalendar();
+    }
+
+    function updateEmpShiftBaseFromAtt(empId, newBaseDate) {
+        if (!isSuperAdminMode()) {
+            alert('총괄관리자만 교대 기준일을 변경할 수 있습니다.');
+            renderAttRecords();
+            return;
+        }
+        const emp = employees.find(e => e.id === empId);
+        if (!emp) return;
+        emp.shiftBaseDate = newBaseDate || '';
+        saveDataSilent();
+        renderAttRecords();
+        if (typeof renderAttCalendar === 'function') renderAttCalendar();
+    }
+
     function renderAttRecords() {
         const startDate = document.getElementById('attStartDate').value || getAttTodayStr();
         const endDate = document.getElementById('attEndDate').value || startDate;
         const deptFilter = document.getElementById('attDeptFilter').value;
+        const workTypeFilter = document.getElementById('attWorkTypeFilter') ? document.getElementById('attWorkTypeFilter').value : '';
         const nameFilter = document.getElementById('attNameFilter').value.trim();
         const tbody = document.getElementById('attRecordsBody');
         if (!tbody) return;
 
         if (startDate > endDate) {
-            tbody.innerHTML = '<tr><td colspan="12" style="color:#dc2626;">시작일이 종료일보다 늦을 수 없습니다.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="13" style="color:#dc2626;">시작일이 종료일보다 늦을 수 없습니다.</td></tr>';
             return;
         }
 
         const dates = getAttDateRange(startDate, endDate).reverse();
         const sortedEmps = [...employees]
-            .filter(e => !e.retireDate && (!deptFilter || e.dept === deptFilter) && (!nameFilter || String(e.name || '').includes(nameFilter)))
+            .filter(e => !e.retireDate && (!deptFilter || e.dept === deptFilter) && (!workTypeFilter || (e.workType || '일반직') === workTypeFilter) && (!nameFilter || String(e.name || '').includes(nameFilter)))
             .sort((a, b) => (a.no || 999) - (b.no || 999));
 
         if (sortedEmps.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="12" style="color:#94a3b8;">조회 조건에 해당하는 직원이 없습니다.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="13" style="color:#94a3b8;">조회 조건에 해당하는 직원이 없습니다.</td></tr>';
             return;
         }
 
@@ -4737,14 +4906,27 @@ let deletedAttendanceLogs = [];
         dates.forEach(targetDate => {
             sortedEmps.forEach(emp => {
                 const inRec = attendanceLogs.find(l => l.empId === emp.id && l.date === targetDate && l.type === '출근');
-                const outRec = attendanceLogs.find(l => l.empId === emp.id && l.date === targetDate && l.type === '퇴근');
+                const shiftInfo = getShiftStatusForInRec(emp.id, targetDate, inRec);
+                const outRec = shiftInfo.outRec;
+                const outDateForAction = outRec ? outRec.date : targetDate;
                 const leaveRec = (emp.history || []).find(h => isApprovedLeave(h) && h.start <= targetDate && (h.end || h.start) >= targetDate);
+                const shiftCycle = getShiftWorkStatus(emp, targetDate);
 
                 let statusHtml = '<span class="att-badge-none">미출근</span>';
-                if (leaveRec && inRec) statusHtml = `<span class="att-badge-leave">${leaveRec.type}</span> <span class="att-badge-work">근무중</span>`;
+                if (leaveRec && inRec) {
+                    if (shiftInfo.state === 'done') statusHtml = `<span class="att-badge-leave">${leaveRec.type}</span> <span class="att-badge-ok">${shiftInfo.isNextDayOut ? '퇴근완료(익일)' : '퇴근완료'}</span>`;
+                    else if (shiftInfo.state === 'missed') statusHtml = `<span class="att-badge-leave">${leaveRec.type}</span> <span style="background:#fee2e2;color:#b91c1c;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:bold;">퇴근미체크</span>`;
+                    else statusHtml = `<span class="att-badge-leave">${leaveRec.type}</span> <span class="att-badge-work">근무중</span>`;
+                }
                 else if (leaveRec) statusHtml = `<span class="att-badge-leave">${leaveRec.type}</span>`;
-                else if (inRec && outRec) statusHtml = '<span class="att-badge-ok">퇴근완료</span>';
-                else if (inRec) statusHtml = '<span class="att-badge-work">근무중</span>';
+                else if (shiftInfo.state === 'done') statusHtml = `<span class="att-badge-ok">${shiftInfo.isNextDayOut ? '퇴근완료(익일)' : '퇴근완료'}</span>`;
+                else if (shiftInfo.state === 'missed') statusHtml = `<span style="background:#fee2e2;color:#b91c1c;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:bold;">퇴근미체크</span>`;
+                else if (inRec) statusHtml = `<span class="att-badge-work">근무중</span>`;
+                else if (shiftCycle.isOffDay) statusHtml = `<span class="att-badge-off">🌙 ${shiftCycle.label}</span>`;
+
+                const outTimeDisplay = outRec
+                    ? `${outRec.time}${shiftInfo.isNextDayOut ? ' <span style="font-size:11px;color:#4f46e5;">(익일)</span>' : ''}`
+                    : (shiftInfo.state === 'missed' ? '<span style="color:#dc2626;">퇴근미체크</span>' : '-');
 
                 rows.push(`
                     <tr>
@@ -4753,9 +4935,24 @@ let deletedAttendanceLogs = [];
                         <td>${emp.dept}</td>
                         <td><strong>${emp.name}</strong></td>
                         <td>${emp.position}</td>
+                        <td style="white-space:nowrap;">
+                            ${isSuperAdminMode()
+                                ? `<div style="display:inline-flex; align-items:center; gap:4px; justify-content:center;">
+                                    <select onchange="updateEmpWorkTypeFromAtt(${emp.id}, this.value)" style="padding:3px 6px; font-size:12px; border:1px solid ${(emp.workType || '일반직') === '교대직' ? '#8b5cf6' : '#cbd5e1'}; border-radius:4px; background:${(emp.workType || '일반직') === '교대직' ? '#f5f3ff' : '#fff'}; color:${(emp.workType || '일반직') === '교대직' ? '#6d28d9' : '#334155'}; font-weight:bold; cursor:pointer;">
+                                        <option value="일반직" ${(emp.workType || '일반직') !== '교대직' ? 'selected' : ''}>일반직</option>
+                                        <option value="교대직" ${(emp.workType || '일반직') === '교대직' ? 'selected' : ''}>교대직</option>
+                                    </select>
+                                    ${(emp.workType || '일반직') === '교대직'
+                                        ? `<input type="date" value="${emp.shiftBaseDate || ''}" onchange="updateEmpShiftBaseFromAtt(${emp.id}, this.value)" title="교대 기준일 (첫 주간 근무 시작일)" style="padding:2px 4px; font-size:11px; border:1px solid #c4b5fd; border-radius:4px; width:112px;">`
+                                        : ''}
+                                   </div>`
+                                : ((emp.workType || '일반직') === '교대직'
+                                    ? `<span style="background:#f3e8ff; color:#6b21a8; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:bold;">교대직</span>${emp.shiftBaseDate ? `<div style="font-size:10px; color:#6b21a8; margin-top:2px;">기준: ${emp.shiftBaseDate}</div>` : ''}`
+                                    : `<span style="color:#64748b; font-size:12px;">일반직</span>`)}
+                        </td>
                         <td>${statusHtml}</td>
                         <td style="font-weight:bold; color:#2563eb;">${inRec ? inRec.time : '-'}${inRec && inRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${targetDate}', '출근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}${isSuperAdminMode() && inRec ? ` <span onclick="cancelAttRecord(${emp.id}, '${targetDate}', '출근')" style="font-size:11px; color:#dc2626; cursor:pointer; text-decoration:underline;">(취소)</span>` : ''}${cancelledMark(emp.id, targetDate, '출근')}</td>
-                        <td style="font-weight:bold;">${outRec ? outRec.time : '-'}${outRec && outRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${targetDate}', '퇴근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}${isSuperAdminMode() && outRec ? ` <span onclick="cancelAttRecord(${emp.id}, '${targetDate}', '퇴근')" style="font-size:11px; color:#dc2626; cursor:pointer; text-decoration:underline;">(취소)</span>` : ''}${cancelledMark(emp.id, targetDate, '퇴근')}</td>
+                        <td style="font-weight:bold;">${outTimeDisplay}${outRec && outRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${outDateForAction}', '퇴근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}${isSuperAdminMode() && outRec ? ` <span onclick="cancelAttRecord(${emp.id}, '${outDateForAction}', '퇴근')" style="font-size:11px; color:#dc2626; cursor:pointer; text-decoration:underline;">(취소)</span>` : ''}${cancelledMark(emp.id, outDateForAction, '퇴근')}</td>
                         <td>${inRec ? inRec.method : '-'}</td>
                         <td>${outRec ? outRec.method : '-'}</td>
                         <td><button type="button" class="action-btn blue" style="padding:4px 8px; font-size:12px;" onclick="copyEmployeeLink(${emp.id})">📱 링크</button></td>
@@ -4775,18 +4972,22 @@ let deletedAttendanceLogs = [];
         const startDate = document.getElementById('attStartDate').value || getAttTodayStr();
         const endDate = document.getElementById('attEndDate').value || startDate;
         const deptFilter = document.getElementById('attDeptFilter').value;
+        const workTypeFilter = document.getElementById('attWorkTypeFilter') ? document.getElementById('attWorkTypeFilter').value : '';
         const nameFilter = document.getElementById('attNameFilter').value.trim();
         const dates = getAttDateRange(startDate, endDate);
         const sortedEmps = [...employees]
-            .filter(e => !e.retireDate && (!deptFilter || e.dept === deptFilter) && (!nameFilter || String(e.name || '').includes(nameFilter)))
+            .filter(e => !e.retireDate && (!deptFilter || e.dept === deptFilter) && (!workTypeFilter || (e.workType || '일반직') === workTypeFilter) && (!nameFilter || String(e.name || '').includes(nameFilter)))
             .sort((a, b) => (a.no || 999) - (b.no || 999));
 
-        const rows = [['날짜', '번호', '부서', '이름', '직급', '휴가여부', '출근시각', '퇴근시각', '출근인증', '퇴근인증', '수정여부', '수정이력', '취소여부', '취소이력']];
+        const rows = [['날짜', '번호', '부서', '이름', '직급', '근무형태', '휴가/비번여부', '출근시각', '퇴근시각', '출근인증', '퇴근인증', '수정여부', '수정이력', '취소여부', '취소이력']];
         dates.forEach(targetDate => {
             sortedEmps.forEach(emp => {
                 const inRec = attendanceLogs.find(l => l.empId === emp.id && l.date === targetDate && l.type === '출근');
-                const outRec = attendanceLogs.find(l => l.empId === emp.id && l.date === targetDate && l.type === '퇴근');
+                const shiftInfo = getShiftStatusForInRec(emp.id, targetDate, inRec);
+                const outRec = shiftInfo.outRec;
                 const leaveRec = (emp.history || []).find(h => isApprovedLeave(h) && h.start <= targetDate && (h.end || h.start) >= targetDate);
+                const shiftCycle = getShiftWorkStatus(emp, targetDate);
+                const statusLabel = leaveRec ? leaveRec.type : (!inRec && shiftCycle.isOffDay ? shiftCycle.label : '');
                 const edit = (inRec && inRec.edited) || (outRec && outRec.edited) ? 'Y' : '';
                 const hist = [attHistoryText(inRec, '출근'), attHistoryText(outRec, '퇴근')].filter(Boolean).join(' / ');
                 rows.push([
@@ -4795,9 +4996,11 @@ let deletedAttendanceLogs = [];
                     emp.dept || '',
                     emp.name || '',
                     emp.position || '',
-                    leaveRec ? leaveRec.type : '',
+                    emp.workType || '일반직',
+                    statusLabel,
                     inRec ? inRec.time : '',
-                    outRec ? outRec.time : '',
+                    inRec ? inRec.time : '',
+                    outRec ? (outRec.time + (shiftInfo.isNextDayOut ? ' (익일)' : '')) : '',
                     inRec ? inRec.method : '',
                     outRec ? outRec.method : '',
                     edit,
@@ -4827,81 +5030,200 @@ let deletedAttendanceLogs = [];
             });
         }
 
+        // 상단 접속 팀과 연동된 팀 필터 적용 (전체(총괄 관리자)인 경우 '' 전체보기)
         const teamFilter = teamSel ? teamSel.value : '';
         const includeLeave = document.getElementById('attCalIncludeLeave').checked;
         const events = [];
 
-        // 1. 출퇴근 기록 매핑 (직원 + 날짜별 그룹화)
-        const dailyAttMap = new Map();
-        attendanceLogs.forEach(log => {
-            const emp = employees.find(e => e.id === log.empId);
-            if (!emp) return;
-            if (teamFilter && emp.dept !== teamFilter) return;
-            const key = `${log.empId}_${log.date}`;
-            if (!dailyAttMap.has(key)) {
-                dailyAttMap.set(key, { emp, date: log.date, inTime: null, outTime: null, inMethod: '', outMethod: '' });
-            }
-            const item = dailyAttMap.get(key);
-            if (log.type === '출근') { item.inTime = log.time; item.inMethod = log.method; }
-            if (log.type === '퇴근') { item.outTime = log.time; item.outMethod = log.method; }
-        });
-
-        dailyAttMap.forEach(item => {
-            const inStr = item.inTime ? item.inTime.slice(0, 5) : '--:--';
-            const outStr = item.outTime ? item.outTime.slice(0, 5) : '근무중';
-            const isComplete = !!(item.inTime && item.outTime);
-            const color = isComplete ? '#0284c7' : '#059669';
-
-            events.push({
-                title: `[${item.emp.name}] ${inStr}~${outStr}`,
-                start: item.date,
-                allDay: true,
-                backgroundColor: color,
-                borderColor: color,
-                extendedProps: {
-                    kind: 'attendance',
-                    empName: item.emp.name,
-                    dept: item.emp.dept,
-                    date: item.date,
-                    inTime: item.inTime || '미기록',
-                    outTime: item.outTime || '미퇴근',
-                    inMethod: item.inMethod || '-',
-                    outMethod: item.outMethod || '-'
+        // [모드 A] 특정 팀 필터 선택 시: 해당 팀원 전체를 개별 이름으로 상세 표기
+        if (teamFilter) {
+            const dailyAttMap = new Map();
+            attendanceLogs.forEach(log => {
+                const emp = employees.find(e => e.id === log.empId);
+                if (!emp || emp.dept !== teamFilter) return;
+                if (log.type === '출근') {
+                    const key = `${log.empId}_${log.date}`;
+                    const shiftInfo = getShiftStatusForInRec(emp.id, log.date, log);
+                    dailyAttMap.set(key, {
+                        emp,
+                        date: log.date,
+                        inTime: log.time,
+                        outTime: shiftInfo.outRec ? shiftInfo.outRec.time : null,
+                        inMethod: log.method,
+                        outMethod: shiftInfo.outRec ? shiftInfo.outRec.method : '',
+                        state: shiftInfo.state,
+                        isNextDayOut: shiftInfo.isNextDayOut
+                    });
+                } else if (log.type === '퇴근') {
+                    const prevDate = log.shiftDate || getAttPrevDateStr(log.date);
+                    const hasSameDayIn = attendanceLogs.some(x => x.empId === emp.id && x.date === log.date && x.type === '출근');
+                    const hasPrevDayIn = attendanceLogs.some(x => x.empId === emp.id && x.date === prevDate && x.type === '출근');
+                    if (!hasSameDayIn && hasPrevDayIn) return;
+                    const key = `${log.empId}_${log.date}`;
+                    if (!dailyAttMap.has(key)) {
+                        dailyAttMap.set(key, {
+                            emp,
+                            date: log.date,
+                            inTime: null,
+                            outTime: log.time,
+                            inMethod: '',
+                            outMethod: log.method,
+                            state: 'done',
+                            isNextDayOut: false
+                        });
+                    }
                 }
             });
-        });
 
-        // 2. 연차 및 휴가 내역 통합 표기 (승인된 연차만 필터링, 미승인 제외)
-        if (includeLeave) {
-            employees.forEach(emp => {
-                if (teamFilter && emp.dept !== teamFilter) return;
-                (emp.history || []).forEach(h => {
-                    if (!isApprovedLeave(h)) return;
+            dailyAttMap.forEach(item => {
+                const inStr = item.inTime ? item.inTime.slice(0, 5) : '--:--';
+                let outStr = '근무중';
+                let color = '#059669';
+                if (item.state === 'done' && item.outTime) {
+                    outStr = item.outTime.slice(0, 5) + (item.isNextDayOut ? '(익일)' : '');
+                    color = item.isNextDayOut ? '#4f46e5' : '#0284c7';
+                } else if (item.state === 'missed') {
+                    outStr = '퇴근미체크';
+                    color = '#dc2626';
+                }
 
-                    const endDateObj = new Date(h.end || h.start);
-                    endDateObj.setDate(endDateObj.getDate() + 1);
-                    const formattedEndDate = endDateObj.toISOString().split('T')[0];
-                    const color = getLeaveColor(h.type);
+                events.push({
+                    title: `[${item.emp.name}] ${inStr}~${outStr}`,
+                    start: item.date,
+                    allDay: true,
+                    backgroundColor: color,
+                    borderColor: color,
+                    extendedProps: {
+                        kind: 'attendance',
+                        empName: item.emp.name,
+                        dept: item.emp.dept,
+                        date: item.date,
+                        inTime: item.inTime || '미기록',
+                        outTime: item.outTime ? (item.outTime + (item.isNextDayOut ? ' (익일 퇴근)' : '')) : (item.state === 'missed' ? '퇴근미체크 (20시간 초과)' : '근무중'),
+                        inMethod: item.inMethod || '-',
+                        outMethod: item.outMethod || '-'
+                    }
+                });
+            });
 
-                    events.push({
-                        title: `📅 [${emp.name}] ${h.type} (${h.days}일)`,
-                        start: h.start,
-                        end: formattedEndDate,
-                        allDay: true,
-                        backgroundColor: color,
-                        borderColor: color,
-                        extendedProps: {
-                            kind: 'leave',
-                            empName: emp.name,
-                            dept: emp.dept,
-                            type: h.type,
-                            startStr: h.start,
-                            endStr: h.end || h.start,
-                            reason: h.reason || '-',
-                            status: String(h.status || '승인').trim()
-                        }
+            if (includeLeave) {
+                employees.forEach(emp => {
+                    if (emp.dept !== teamFilter) return;
+                    (emp.history || []).forEach(h => {
+                        if (!isApprovedLeave(h)) return;
+                        const endDateObj = new Date(h.end || h.start);
+                        endDateObj.setDate(endDateObj.getDate() + 1);
+                        const formattedEndDate = endDateObj.toISOString().split('T')[0];
+                        const color = getLeaveColor(h.type);
+
+                        events.push({
+                            title: `📅 [${emp.name}] ${h.type} (${h.days}일)`,
+                            start: h.start,
+                            end: formattedEndDate,
+                            allDay: true,
+                            backgroundColor: color,
+                            borderColor: color,
+                            extendedProps: {
+                                kind: 'leave',
+                                empName: emp.name,
+                                dept: emp.dept,
+                                type: h.type,
+                                startStr: h.start,
+                                endStr: h.end || h.start,
+                                reason: h.reason || '-',
+                                status: String(h.status || '승인').trim()
+                            }
+                        });
                     });
                 });
+            }
+        }
+        // [모드 B] 전체보기 (70명 규모): 날짜별 출근/연차/미출근 요약 배지 표기 (클릭 시 전체 명단 팝업)
+        else {
+            const activeEmps = employees.filter(e => !e.retireDate).sort((a, b) => (a.no || 999) - (b.no || 999));
+            const todayStr = getAttTodayStr();
+
+            const dateSet = new Set([todayStr]);
+            attendanceLogs.forEach(l => { if (l.date) dateSet.add(l.date); });
+            activeEmps.forEach(emp => {
+                (emp.history || []).forEach(h => {
+                    if (!isApprovedLeave(h)) return;
+                    eachDate(h.start, h.end || h.start).forEach(d => dateSet.add(d));
+                });
+            });
+
+            dateSet.forEach(dateStr => {
+                const targetEmps = activeEmps.filter(e => !e.joinDate || e.joinDate <= dateStr);
+                const inList = [];
+                const leaveList = [];
+                const offList = [];
+                const absentList = [];
+
+                targetEmps.forEach(emp => {
+                    const inRec = attendanceLogs.find(l => l.empId === emp.id && l.date === dateStr && l.type === '출근');
+                    const shiftInfo = getShiftStatusForInRec(emp.id, dateStr, inRec);
+                    const outRec = shiftInfo.outRec;
+                    const leaveRec = (emp.history || []).find(h => isApprovedLeave(h) && h.start <= dateStr && (h.end || h.start) >= dateStr);
+                    const shiftCycle = getShiftWorkStatus(emp, dateStr);
+
+                    if (inRec) {
+                        const outLabel = outRec
+                            ? (outRec.time.slice(0, 5) + (shiftInfo.isNextDayOut ? '(익일)' : ''))
+                            : (shiftInfo.state === 'missed' ? '퇴근미체크' : '근무중');
+                        inList.push(`[${emp.dept}] ${emp.name} (${inRec.time.slice(0, 5)}~${outLabel})`);
+                    }
+                    if (leaveRec) {
+                        leaveList.push(`[${emp.dept}] ${emp.name} - ${leaveRec.type}`);
+                    }
+                    if (!inRec && !leaveRec && shiftCycle.isOffDay) {
+                        offList.push(`[${emp.dept}] ${emp.name} (${shiftCycle.label})`);
+                    }
+                    const dayOfWeek = new Date(dateStr + 'T00:00:00').getDay();
+                    if (!inRec && !leaveRec && !shiftCycle.isOffDay && dateStr <= todayStr && dayOfWeek !== 0 && dayOfWeek !== 6) {
+                        absentList.push(`[${emp.dept}] ${emp.name} ${emp.position}`);
+                    }
+                });
+
+                if (inList.length > 0) {
+                    events.push({
+                        title: `🟢 출근: ${inList.length}명`,
+                        start: dateStr,
+                        allDay: true,
+                        backgroundColor: '#059669',
+                        borderColor: '#059669',
+                        extendedProps: { kind: 'summary', category: '출근자 명단', date: dateStr, list: inList }
+                    });
+                }
+                if (includeLeave && leaveList.length > 0) {
+                    events.push({
+                        title: `📅 연차/휴가: ${leaveList.length}명`,
+                        start: dateStr,
+                        allDay: true,
+                        backgroundColor: '#2563eb',
+                        borderColor: '#2563eb',
+                        extendedProps: { kind: 'summary', category: '연차/휴가자 명단', date: dateStr, list: leaveList }
+                    });
+                }
+                if (offList.length > 0) {
+                    events.push({
+                        title: `🌙 교대비번: ${offList.length}명`,
+                        start: dateStr,
+                        allDay: true,
+                        backgroundColor: '#7c3aed',
+                        borderColor: '#7c3aed',
+                        extendedProps: { kind: 'summary', category: '교대 비번자 명단', date: dateStr, list: offList }
+                    });
+                }
+                if (absentList.length > 0 && (inList.length > 0 || leaveList.length > 0 || offList.length > 0)) {
+                    events.push({
+                        title: `⚠️ 미출근: ${absentList.length}명`,
+                        start: dateStr,
+                        allDay: true,
+                        backgroundColor: '#dc2626',
+                        borderColor: '#dc2626',
+                        extendedProps: { kind: 'summary', category: '미출근자 명단', date: dateStr, list: absentList }
+                    });
+                }
             });
         }
 
@@ -4924,7 +5246,9 @@ let deletedAttendanceLogs = [];
             events: events,
             eventClick: function(info) {
                 const p = info.event.extendedProps;
-                if (p.kind === 'attendance') {
+                if (p.kind === 'summary') {
+                    alert(`📊 ${p.date} ${p.category} (${p.list.length}명)\n\n` + p.list.join('\n'));
+                } else if (p.kind === 'attendance') {
                     alert(`⏱️ 출퇴근 상세 기록\n\n• 직원: ${p.empName} (${p.dept})\n• 일자: ${p.date}\n• 출근: ${p.inTime} (${p.inMethod})\n• 퇴근: ${p.outTime} (${p.outMethod})`);
                 } else {
                     alert(`📅 휴가/연차 상세 일정\n\n• 직원: ${p.empName} (${p.dept})\n• 구분: ${p.type} (${p.status})\n• 기간: ${p.startStr} ~ ${p.endStr}\n• 사유: ${p.reason}`);
@@ -5205,17 +5529,52 @@ async function punchRecord(type) {
         await loadAttendanceFromFirestore();   // 다른 기기에서 저장된 최신 기록 동기화
 
         const today = getAttTodayStr();
-        const hasIn  = attendanceLogs.some(l => l.empId === emp.id && l.date === today && l.type === '출근');
-        const hasOut = attendanceLogs.some(l => l.empId === emp.id && l.date === today && l.type === '퇴근');
+        const yesterday = getAttPrevDateStr(today);
+        const nowMs = Date.now();
 
-        if (type === '출근' && hasIn)  { setPunchMsg('오늘은 이미 출근 기록이 있습니다.', true); return; }
-        if (type === '퇴근' && !hasIn) { setPunchMsg('출근 기록이 없어 퇴근을 기록할 수 없습니다.', true); return; }
-        if (type === '퇴근' && hasOut) { setPunchMsg('오늘은 이미 퇴근 기록이 있습니다.', true); return; }
+        const todayIn = attendanceLogs.find(l => l.empId === emp.id && l.date === today && l.type === '출근');
+        const todayOut = attendanceLogs.find(l => l.empId === emp.id && l.date === today && l.type === '퇴근');
+        const yestIn = attendanceLogs.find(l => l.empId === emp.id && l.date === yesterday && l.type === '출근');
+        const yestShift = getShiftStatusForInRec(emp.id, yesterday, yestIn, nowMs);
+        const hasActiveYestShift = !!(yestIn && yestShift.state === 'working');
+
+        if (type === '출근') {
+            if (todayIn) { setPunchMsg('오늘은 이미 출근 기록이 있습니다.', true); return; }
+            if (hasActiveYestShift) {
+                setPunchMsg(`전날(${yesterday} ${yestIn.time.slice(0, 5)}) 야간 근무 퇴근이 아직 처리되지 않았습니다. 먼저 퇴근을 눌러주세요.`, true);
+                return;
+            }
+        }
+
+        let targetShiftDate = today;
+        if (type === '퇴근') {
+            if (todayIn) {
+                if (todayOut) { setPunchMsg('오늘은 이미 퇴근 기록이 있습니다.', true); return; }
+                if (isOver20Hours(today, todayIn.time, nowMs)) {
+                    setPunchMsg('출근 후 20시간이 경과하여 자동 [퇴근미체크] 처리되었습니다. 관리자에게 문의하세요.', true);
+                    return;
+                }
+                targetShiftDate = today;
+            } else if (hasActiveYestShift) {
+                targetShiftDate = yesterday;
+            } else if (yestIn && yestShift.state === 'missed') {
+                setPunchMsg(`전날(${yesterday}) 출근 후 20시간이 경과하여 자동 [퇴근미체크] 처리되었습니다.`, true);
+                return;
+            } else if (todayOut) {
+                setPunchMsg('오늘은 이미 퇴근 기록이 있습니다.', true);
+                return;
+            } else {
+                setPunchMsg('출근 기록이 없어 퇴근을 기록할 수 없습니다.', true);
+                return;
+            }
+        }
 
         const log = {
-            id: `${emp.id}_${today}_${type}_${Date.now()}`,
+            id: `${emp.id}_${targetShiftDate}_${type}_${Date.now()}`,
             empId: emp.id,
-            date: today,
+            date: targetShiftDate,
+            actualDate: today,
+            shiftDate: targetShiftDate,
             type: type,
             time: getPunchTimeStr(),
             method: chk.method,
@@ -5225,7 +5584,7 @@ async function punchRecord(type) {
 
         await savePunchLog(log);
         attendanceLogs.push(log);
-        setPunchMsg(`✅ ${type} 기록 완료 (${log.time.slice(0, 5)}, ${log.method})`);
+        setPunchMsg(`✅ ${type} 기록 완료 (${log.time.slice(0, 5)}, ${log.method}${type === '퇴근' && targetShiftDate !== today ? ', ' + targetShiftDate + ' 야간근무 퇴근' : ''})`);
     } catch (e) {
         console.error('[출퇴근] 기록 실패:', e);
         setPunchMsg('기록 실패: ' + e.message, true);
@@ -5417,7 +5776,16 @@ async function cancelAttRecord(empId, date, type) {
             const arr = snap.exists && Array.isArray(snap.data().attendanceLogs) ? [...snap.data().attendanceLogs] : [];
             const deleted = snap.exists && Array.isArray(snap.data().deletedAttendanceLogs) ? [...snap.data().deletedAttendanceLogs] : [];
 
-            if (type === '출근' && arr.some(l => l.empId === empId && l.date === date && l.type === '퇴근')) {
+            const nextDate = (() => {
+                const d = new Date(date + 'T00:00:00');
+                d.setDate(d.getDate() + 1);
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            })();
+            const hasLinkedOut = arr.some(l => l.empId === empId && l.type === '퇴근' && (
+                l.date === date ||
+                (l.date === nextDate && (l.shiftDate === date || !arr.some(x => x.empId === empId && x.date === nextDate && x.type === '출근')))
+            ));
+            if (type === '출근' && hasLinkedOut) {
                 throw new Error('퇴근 기록을 먼저 취소해야 출근을 취소할 수 있습니다.');
             }
             const idx = arr.findIndex(l => l.empId === empId && l.date === date && l.type === type);
