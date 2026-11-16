@@ -21,6 +21,7 @@
   .emp-box .k { font-size: 12px; color: #64748b; }
   .emp-box .v { font-size: 16px; font-weight: 700; margin-top: 2px; }
   .emp-box .v.right { text-align: right; }
+  .shift-banner { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; border-radius: 10px; padding: 10px 12px; font-size: 13px; font-weight: 700; margin-bottom: 14px; text-align: center; }
   .check { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
   .check-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; padding: 4px 0; }
   .check-info { font-size: 12px; color: #64748b; margin-top: 6px; line-height: 1.5; word-break: break-all; }
@@ -40,10 +41,10 @@
   .ok-text { color: #059669; }
   .err-text { color: #dc2626; }
   h2 { font-size: 16px; font-weight: 800; margin-bottom: 10px; }
-  .rec { display: flex; justify-content: space-between; font-size: 14px; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+  .rec { display: flex; justify-content: space-between; align-items: center; font-size: 14px; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
   .rec:last-child { border-bottom: none; }
   .rec .t { font-weight: 700; }
-  .rec .m { color: #64748b; font-size: 12px; }
+  .rec .m { color: #64748b; font-size: 12px; margin-top: 2px; }
   .empty { font-size: 14px; color: #94a3b8; }
   .hidden { display: none !important; }
 </style>
@@ -75,6 +76,9 @@
         </div>
       </div>
 
+      <!-- 전일 야간/당직 미퇴근 안내 배너 -->
+      <div class="shift-banner hidden" id="shiftBanner"></div>
+
       <div class="check">
         <div class="check-row">
           <span>📶 Wi-Fi 공인 IP 인증</span>
@@ -96,7 +100,7 @@
     </div>
 
     <div class="card">
-      <h2>오늘의 출퇴근 기록</h2>
+      <h2 id="recTitle">오늘의 출퇴근 기록</h2>
       <div id="recList"><div class="empty">아직 기록이 없습니다.</div></div>
     </div>
   </div>
@@ -126,9 +130,16 @@ let busy = false;
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, '0');
 
-function todayStr() {
-  const d = new Date();
+function formatDate(d) {
   return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+function todayStr() {
+  return formatDate(new Date());
+}
+function yesterdayStr() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return formatDate(d);
 }
 function nowStr() {
   const d = new Date();
@@ -218,24 +229,82 @@ async function runLocationCheck() {
   return lastCheck;
 }
 
-function todayRecs() {
-  return logs.filter(l => l.empId === emp.id && l.date === todayStr());
+// 현재 진행 중인 근무 기준일 계산 (전일 출근 후 20시간 이내 미퇴근 상태면 전일 날짜 반환)
+function getShiftContext() {
+  const today = todayStr();
+  const yest = yesterdayStr();
+
+  const todayLogs = logs.filter(l => l.empId === emp.id && l.date === today);
+  const yestLogs = logs.filter(l => l.empId === emp.id && l.date === yest);
+
+  const yestIn = yestLogs.find(l => l.type === '출근');
+  const yestOut = yestLogs.find(l => l.type === '퇴근');
+
+  // 오늘 기록이 아직 없고, 어제 출근 후 20시간 이내에 퇴근하지 않은 상태 -> 야간/당직 익일 퇴근 대상
+  if (todayLogs.length === 0 && yestIn && !yestOut) {
+    const inDateTime = new Date(`${yest}T${yestIn.time}`);
+    const elapsedHours = (new Date() - inDateTime) / (1000 * 60 * 60);
+
+    if (!isNaN(elapsedHours) && elapsedHours <= 20) {
+      return {
+        targetDate: yest,
+        isOvernight: true,
+        recs: yestLogs
+      };
+    }
+  }
+
+  // 어제 야간 근무를 오늘 퇴근 완료한 직후라면 오늘 화면에도 해당 근무 내역을 보여줌
+  if (todayLogs.length === 0 && yestIn && yestOut && yestOut.actualDate === today) {
+    return {
+      targetDate: today,
+      isOvernight: false,
+      completedOvernightRecs: yestLogs,
+      recs: todayLogs
+    };
+  }
+
+  return {
+    targetDate: today,
+    isOvernight: false,
+    recs: todayLogs
+  };
 }
 
 function renderButtons() {
   if (!emp) return;
-  const recs = todayRecs();
+  const ctx = getShiftContext();
+  const recs = ctx.recs;
   const inR = recs.find(l => l.type === '출근');
   const outR = recs.find(l => l.type === '퇴근');
   const canPunch = !!lastCheck && lastCheck.ok && !busy;
 
+  // 전일 야간/당직 근무 중 배너 표시
+  const banner = $('shiftBanner');
+  if (ctx.isOvernight) {
+    banner.textContent = `🌙 전일(${ctx.targetDate}) 출근 근무 중 — 퇴근 시 전일 근무로 기록됩니다.`;
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
+  }
+
   $('btnIn').disabled = !canPunch || !!inR;
   $('btnOut').disabled = !canPunch || !inR || !!outR;
   $('btnRecheck').disabled = busy;
-  renderRecords(recs);
+
+  if (ctx.isOvernight) {
+    $('recTitle').textContent = `진행 중인 근무 기록 (${ctx.targetDate} 출근)`;
+    renderRecords(recs, ctx.targetDate);
+  } else if (ctx.completedOvernightRecs) {
+    $('recTitle').textContent = `최근 완료된 야간/당직 기록 (${yesterdayStr()} 근무)`;
+    renderRecords(ctx.completedOvernightRecs, yesterdayStr());
+  } else {
+    $('recTitle').textContent = '오늘의 출퇴근 기록';
+    renderRecords(recs, todayStr());
+  }
 }
 
-function renderRecords(recs) {
+function renderRecords(recs, baseDate) {
   const box = $('recList');
   box.innerHTML = '';
   if (recs.length === 0) {
@@ -248,10 +317,12 @@ function renderRecords(recs) {
     const row = document.createElement('div');
     row.className = 'rec';
     const left = document.createElement('div');
-    left.innerHTML = `<div class="t">${type}</div><div class="m">${r.method || ''}</div>`;
+    const isNextDay = r.actualDate && r.actualDate !== baseDate;
+    const subInfo = [r.method || '', isNextDay ? `익일(${r.actualDate}) 퇴근` : ''].filter(Boolean).join(' · ');
+    left.innerHTML = `<div class="t">${type}</div><div class="m">${subInfo}</div>`;
     const right = document.createElement('div');
     right.className = 't';
-    right.textContent = r.time;
+    right.textContent = isNextDay ? `(익일) ${r.time}` : r.time;
     row.appendChild(left);
     row.appendChild(right);
     box.appendChild(row);
@@ -275,16 +346,20 @@ async function punch(type) {
     const snap = await db.collection(COLLECTION).doc('attendanceStore').get();
     logs = snap.exists && Array.isArray(snap.data().attendanceLogs) ? snap.data().attendanceLogs : [];
 
-    const today = todayStr();
-    const has = t => logs.some(l => l.empId === emp.id && l.date === today && l.type === t);
+    const ctx = getShiftContext();
+    const targetDate = type === '출근' ? todayStr() : ctx.targetDate;
+    const actualToday = todayStr();
+
+    const has = t => logs.some(l => l.empId === emp.id && l.date === targetDate && l.type === t);
     if (type === '출근' && has('출근')) { setMsg('오늘은 이미 출근 기록이 있습니다.', false); return; }
     if (type === '퇴근' && !has('출근')) { setMsg('출근 기록이 없어 퇴근을 기록할 수 없습니다.', false); return; }
-    if (type === '퇴근' && has('퇴근')) { setMsg('오늘은 이미 퇴근 기록이 있습니다.', false); return; }
+    if (type === '퇴근' && has('퇴근')) { setMsg('이미 퇴근 기록이 있습니다.', false); return; }
 
     const log = {
-      id: `${emp.id}_${today}_${type}_${Date.now()}`,
+      id: `${emp.id}_${targetDate}_${type}_${Date.now()}`,
       empId: emp.id,
-      date: today,
+      date: targetDate,           // 근무 귀속 기준일 (15일 야간 출근 -> 16일 07시 퇴근 시 15일로 귀속)
+      actualDate: actualToday,    // 실제 버튼을 누른 날짜
       type: type,
       time: nowStr(),
       method: chk.geoOk && chk.ipOk ? 'GPS+IP' : (chk.geoOk ? 'GPS' : 'IP'),
@@ -298,7 +373,8 @@ async function punch(type) {
     }, { merge: true });
 
     logs.push(log);
-    setMsg(`✅ ${type} 기록 완료 (${log.time.slice(0, 5)})`, true);
+    const suffix = (type === '퇴근' && targetDate !== actualToday) ? ` [${targetDate} 근무 귀속]` : '';
+    setMsg(`✅ ${type} 기록 완료 (${log.time.slice(0, 5)})${suffix}`, true);
   } catch (e) {
     console.error('[출퇴근] 기록 실패:', e);
     setMsg('기록 실패: ' + e.message, false);
@@ -365,6 +441,13 @@ async function init() {
 $('btnIn').onclick = () => punch('출근');
 $('btnOut').onclick = () => punch('퇴근');
 $('btnRecheck').onclick = async () => { setMsg('', true); await runLocationCheck(); };
+
+// 백그라운드에서 앱 화면으로 다시 돌아올 때 위치·IP 및 버튼 상태 자동 갱신
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && emp && !busy) {
+    runLocationCheck();
+  }
+});
 
 init();
 </script>
