@@ -491,11 +491,20 @@
         @media (max-width: 820px) { .geo-grid { grid-template-columns: 1fr; } }
         #attAdminMap { width: 100%; height: 340px; border-radius: 8px; border: 1px solid #cbd5e1; z-index: 1; }
         #attendanceCalendar { margin-top: 10px; background: #fff; padding: 15px; border-radius: 8px; min-height: 700px; border: 1px solid #e2e8f0; }
+        .att-view-toggle { display: inline-flex; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; background: #f8fafc; }
+        .att-view-toggle button { border: none; background: transparent; padding: 6px 12px; font-size: 12.5px; font-weight: bold; color: #475569; cursor: pointer; transition: all 0.15s; }
+        .att-view-toggle button.active { background: #0f766e; color: #fff; }
+        .att-view-toggle button:hover:not(.active) { background: #e2e8f0; }
+        .fc-daygrid-event { white-space: normal !important; line-height: 1.25 !important; }
         .att-badge-ok { background: #dcfce7; color: #15803d; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
         .att-badge-work { background: #fef3c7; color: #b45309; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
         .att-badge-none { background: #e2e8f0; color: #475569; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
         .att-badge-leave { background: #dbeafe; color: #1d4ed8; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
         .att-badge-off { background: #f3e8ff; color: #6b21a8; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .att-shift-tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10.5px; font-weight: bold; margin-left: 4px; vertical-align: middle; }
+        .att-shift-tag.night-in { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+        .att-shift-tag.night-out { background: #f3e8ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+        .att-shift-tag.day-in { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
     </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -1066,6 +1075,7 @@
                             <option value="">전체 근무형태</option>
                             <option value="일반직">일반직</option>
                             <option value="교대직">교대직</option>
+                            <option value="당직직">당직직</option>
                         </select>
                         <input type="text" id="attNameFilter" placeholder="이름 검색" oninput="renderAttRecords()" style="width:120px;">
                         <button type="button" class="action-btn blue" onclick="loadAttendanceFromFirestore(true)">🔄 새로고침</button>
@@ -1085,6 +1095,8 @@
                                 <th>근태 / 연차 상태</th>
                                 <th>출근 시각</th>
                                 <th>퇴근 시각</th>
+                                <th style="color:#4338ca; background:#eef2ff;">야간출근 시각(당일)</th>
+                                <th style="color:#6d28d9; background:#f3e8ff;">야간퇴근 시각(다음날짜)</th>
                                 <th>출근 인증</th>
                                 <th>퇴근 인증</th>
                                 <th>모바일 링크</th>
@@ -1099,16 +1111,21 @@
             <!-- 하위 탭 2: 출퇴근 캘린더 (연차 통합 표기) -->
             <div id="att-sub-calendar" class="att-subpage">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;" class="no-print">
-                    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                         <div class="team-select-box">
                             <span>👥 팀 보기:</span>
-                            <select id="attCalTeamFilter" onchange="renderAttCalendar()">
+                            <select id="attCalTeamFilter" onchange="handleAttCalTeamChange()">
                                 <option value="">전체보기</option>
                             </select>
+                        </div>
+                        <div class="att-view-toggle" title="전체보기 시 인원 요약 또는 직원별 상세 일정을 선택할 수 있습니다.">
+                            <button type="button" id="attCalModeSummaryBtn" class="active" onclick="setAttCalDisplayMode('summary')">📊 인원 요약</button>
+                            <button type="button" id="attCalModeDetailBtn" onclick="setAttCalDisplayMode('detail')">👤 직원별 상세</button>
                         </div>
                         <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; background:#eff6ff; padding:6px 12px; border-radius:6px; border:1px solid #bfdbfe; color:#1d4ed8;">
                             <input type="checkbox" id="attCalIncludeLeave" checked onchange="renderAttCalendar()"> 📅 승인된 연차/휴가 일정 함께 표시
                         </label>
+                        <button type="button" class="action-btn blue" style="padding:6px 10px; font-size:12px;" onclick="loadAttendanceFromFirestore(true)">🔄 새로고침</button>
                     </div>
                     <div style="font-size:12px; color:#475569; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
                         <span>🟢 근무중</span>
@@ -1575,6 +1592,8 @@
                 });
             }
             attCalSel.value = syncedTeam;
+            attCalDisplayMode = syncedTeam ? 'detail' : 'summary';
+            if (typeof syncAttCalModeButtons === 'function') syncAttCalModeButtons();
         }
 
         if (typeof populateCalendarTeamFilter === 'function') populateCalendarTeamFilter();
@@ -3679,7 +3698,8 @@
 
             const prevYearUsed = parseFloat(prevRaw) || 0;
             const noFromFile = parseInt(get(r, 'no'));
-            const workType = (workTypeRaw === '교대직' || workTypeRaw === '교대' || workTypeRaw === '교대근무') ? '교대직' : '일반직';
+            const workType = (workTypeRaw === '교대직' || workTypeRaw === '교대' || workTypeRaw === '교대근무') ? '교대직'
+                : (workTypeRaw === '당직직' || workTypeRaw === '당직') ? '당직직' : '일반직';
             const shiftBaseDate = (workType === '교대직' && shiftBaseRaw) ? shiftBaseRaw : '';
             const data = {dept, name, position, birth, joinDate, retireDate: retireDate || '', category, prevYearUsed, no: noFromFile, workType, shiftBaseDate};
 
@@ -4735,28 +4755,78 @@ let deletedAttendanceLogs = [];
         return (nowMs - inDt.getTime()) >= (20 * 60 * 60 * 1000);
     }
 
+    function getAttNextDateStr(dateStr) {
+        const d = new Date(dateStr + 'T00:00:00');
+        d.setDate(d.getDate() + 1);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function isNightShiftCheck(emp, targetDate, inRec, shiftInfo) {
+        if (inRec && inRec.shift === '야간') return true;
+        const shiftCycle = getShiftWorkStatus(emp, targetDate);
+        if (shiftInfo && shiftInfo.isNextDayOut) return true;
+        if (shiftCycle && shiftCycle.phase === 'night') return true;
+        if (inRec && inRec.time) {
+            const hh = parseInt(inRec.time.slice(0, 2), 10);
+            if (!isNaN(hh) && (hh >= 15 || hh < 4)) return true;
+        }
+        return false;
+    }
+
+    function isOwnOutRec(l, inRec) {
+        if (l.shiftDate) return l.shiftDate === l.date;
+        if (!inRec || !inRec.time || !l.time) return true;
+        return l.time > inRec.time;
+    }
+
+    function isDutyEmp(empId) {
+        const emp = employees.find(e => e.id === empId);
+        return !!(emp && emp.workType === '당직직');
+    }
+
+    // 당직: 아침 출근 → 다음날 아침 퇴근이 정상. 다음날 12시 전까지는 퇴근미체크로 보지 않음
+    function isNightOutOverdue(inDateStr, nowMs = Date.now()) {
+        const limit = new Date(getAttNextDateStr(inDateStr) + 'T' + NIGHT_SHIFT_OUT_DEADLINE + ':00').getTime();
+        return nowMs >= limit;
+    }
+
+    function isDutyOverdue(inDateStr, nowMs = Date.now()) {
+        const limit = new Date(getAttNextDateStr(inDateStr) + 'T12:00:00').getTime();
+        return nowMs >= limit;
+    }
+
     function getShiftStatusForInRec(empId, dateStr, inRec, nowMs = Date.now()) {
         if (!inRec) return { state: 'none', outRec: null, isNextDayOut: false };
-        const sameDayOut = attendanceLogs.find(l => l.empId === empId && l.date === dateStr && l.type === '퇴근');
+        const sameDayOut = attendanceLogs.find(l => l.empId === empId && l.date === dateStr && l.type === '퇴근' && isOwnOutRec(l, inRec));
         if (sameDayOut) {
             const isNextDay = !!(sameDayOut.actualDate && sameDayOut.actualDate !== dateStr);
             return { state: 'done', outRec: sameDayOut, isNextDayOut: isNextDay };
         }
-        const nextDateStr = (() => {
-            const d = new Date(dateStr + 'T00:00:00');
-            d.setDate(d.getDate() + 1);
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        })();
+        // 근무일(shiftDate)이 같은 퇴근 기록은 저장된 날짜와 무관하게 이 출근에 연결 (익일 아침 퇴근)
+        const linkedOut = attendanceLogs.find(l => l.empId === empId && l.type === '퇴근' && l.shiftDate === dateStr);
+        if (linkedOut) {
+            const outActual = linkedOut.actualDate || linkedOut.date;
+            return { state: 'done', outRec: linkedOut, isNextDayOut: outActual !== dateStr };
+        }
+        const nextDateStr = getAttNextDateStr(dateStr);
+        // 다음날 출근 전에 찍힌 퇴근은 전날 야간근무의 퇴근으로 본다 (근무일 정보가 없는 기록은 시각으로 판단)
+        const nextDayIn = attendanceLogs.find(x => x.empId === empId && x.date === nextDateStr && x.type === '출근');
         const nextDayOut = attendanceLogs.find(l =>
             l.empId === empId &&
             l.date === nextDateStr &&
             l.type === '퇴근' &&
-            (l.shiftDate === dateStr || !attendanceLogs.some(x => x.empId === empId && x.date === nextDateStr && x.type === '출근'))
+            (l.shiftDate === dateStr || (!l.shiftDate && (!nextDayIn || l.time < nextDayIn.time)))
         );
         if (nextDayOut) {
             return { state: 'done', outRec: nextDayOut, isNextDayOut: true };
         }
-        if (isOver20Hours(dateStr, inRec.time, nowMs)) {
+        const emp = employees.find(e => e.id === empId);
+        const overdue = isDutyEmp(empId)
+            ? isDutyOverdue(dateStr, nowMs)
+            : (emp && getShiftWorkStatus(emp, dateStr).phase === 'night')
+                ? isNightOutOverdue(dateStr, nowMs)
+                : isOver20Hours(dateStr, inRec.time, nowMs);
+        if (overdue) {
             return { state: 'missed', outRec: null, isNextDayOut: false };
         }
         return { state: 'working', outRec: null, isNextDayOut: false };
@@ -4767,9 +4837,18 @@ let deletedAttendanceLogs = [];
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
 
-    // 교대근무 패턴 판별: 6일 주기 (0,1=주간 / 2,3=야간 / 4,5=비번)
+    // 야간 근무자 저녁 출근 마감 시각 (이 시각까지 출근 기록이 없으면 오늘 명단에서 미출근 처리)
+    const NIGHT_SHIFT_IN_DEADLINE = '18:00';
+    // 야간 근무자 아침 퇴근 마감 시각 (다음날 이 시각 정각이 지나도 퇴근 기록이 없으면 퇴근미체크)
+    const NIGHT_SHIFT_OUT_DEADLINE = '09:00';
+
+    // 교대근무 패턴 판별: 6일 주기 순번 (주간 / 주간 / 야간(1) / 야간(2) / 비번 / 비번), 기준일부터 계속 순환
+    // 야간(1): 저녁 출근만 (아침 출근 없음) / 야간(2): 아침 퇴근(전날 야간 마감) 후 다시 저녁 출근
     function getShiftWorkStatus(emp, dateStr) {
         const workType = (emp && emp.workType) || '일반직';
+        if (workType === '당직직') {
+            return { isShift: false, phase: 'duty', label: '당직', isOffDay: false };
+        }
         if (workType !== '교대직') {
             return { isShift: false, phase: 'normal', label: '일반직', isOffDay: false };
         }
@@ -4784,9 +4863,10 @@ let deletedAttendanceLogs = [];
         const diffDays = Math.floor((targetMs - baseMs) / 86400000);
         const mod = ((diffDays % 6) + 6) % 6;
 
-        if (mod === 0 || mod === 1) return { isShift: true, phase: 'day', label: '교대(주간)', isOffDay: false };
-        if (mod === 2 || mod === 3) return { isShift: true, phase: 'night', label: '교대(야간)', isOffDay: false };
-        return { isShift: true, phase: 'off', label: '교대(비번)', isOffDay: true };
+        if (mod === 0 || mod === 1) return { isShift: true, phase: 'day', label: '주간', slot: mod + 1, isOffDay: false };
+        if (mod === 2) return { isShift: true, phase: 'night', label: '야간(1)', slot: 3, nightNo: 1, isOffDay: false };
+        if (mod === 3) return { isShift: true, phase: 'night', label: '야간(2)', slot: 4, nightNo: 2, isOffDay: false };
+        return { isShift: true, phase: 'off', label: '비번', slot: mod + 1, isOffDay: true };
     }
 
     function isApprovedLeave(h) {
@@ -4853,7 +4933,7 @@ let deletedAttendanceLogs = [];
         }
         const emp = employees.find(e => e.id === empId);
         if (!emp) return;
-        emp.workType = newWorkType === '교대직' ? '교대직' : '일반직';
+        emp.workType = (newWorkType === '교대직' || newWorkType === '당직직') ? newWorkType : '일반직';
         if (emp.workType !== '교대직') {
             emp.shiftBaseDate = '';
         } else if (!emp.shiftBaseDate) {
@@ -4888,7 +4968,7 @@ let deletedAttendanceLogs = [];
         if (!tbody) return;
 
         if (startDate > endDate) {
-            tbody.innerHTML = '<tr><td colspan="13" style="color:#dc2626;">시작일이 종료일보다 늦을 수 없습니다.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="15" style="color:#dc2626;">시작일이 종료일보다 늦을 수 없습니다.</td></tr>';
             return;
         }
 
@@ -4898,7 +4978,7 @@ let deletedAttendanceLogs = [];
             .sort((a, b) => (a.no || 999) - (b.no || 999));
 
         if (sortedEmps.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="13" style="color:#94a3b8;">조회 조건에 해당하는 직원이 없습니다.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="15" style="color:#94a3b8;">조회 조건에 해당하는 직원이 없습니다.</td></tr>';
             return;
         }
 
@@ -4911,22 +4991,98 @@ let deletedAttendanceLogs = [];
                 const outDateForAction = outRec ? outRec.date : targetDate;
                 const leaveRec = (emp.history || []).find(h => isApprovedLeave(h) && h.start <= targetDate && (h.end || h.start) >= targetDate);
                 const shiftCycle = getShiftWorkStatus(emp, targetDate);
+                const isNight = isNightShiftCheck(emp, targetDate, inRec, shiftInfo);
+
+                // 당직 야간유지 기록 (익일 아침 퇴근 대기)
+                const holdRec = attendanceLogs.find(l => l.empId === emp.id && l.date === targetDate && l.type === '야간유지');
+                if (holdRec && !outRec) nightOutTimeDisplay = `<span style="color:#4338ca;">야간유지 (익일 아침 퇴근 대기)</span>`;
+
+                // 전날 야간근무 후 당일 아침에 퇴근한 기록 확인 (당일 행에서도 아침 야간퇴근을 바로 볼 수 있도록)
+                const prevDate = getAttPrevDateStr(targetDate);
+                const prevInRec = attendanceLogs.find(l => l.empId === emp.id && l.date === prevDate && l.type === '출근');
+                const prevShiftInfo = getShiftStatusForInRec(emp.id, prevDate, prevInRec);
+                const morningNightOutRec = (prevInRec && prevShiftInfo.state === 'done' && prevShiftInfo.isNextDayOut && prevShiftInfo.outRec)
+                    ? prevShiftInfo.outRec : null;
+
+                // 전날 야간 근무 아침 퇴근 미체크 (마감 초과) → 당일 행 야간퇴근 칸에 표시
+                const prevNightMissed = !!(prevInRec && prevShiftInfo.state === 'missed'
+                    && getShiftWorkStatus(emp, prevDate).phase === 'night');
 
                 let statusHtml = '<span class="att-badge-none">미출근</span>';
                 if (leaveRec && inRec) {
-                    if (shiftInfo.state === 'done') statusHtml = `<span class="att-badge-leave">${leaveRec.type}</span> <span class="att-badge-ok">${shiftInfo.isNextDayOut ? '퇴근완료(익일)' : '퇴근완료'}</span>`;
+                    if (shiftInfo.state === 'done') statusHtml = shiftInfo.isNextDayOut ? `<span class="att-badge-leave">${leaveRec.type}</span> <span class="att-badge-work">야간근무</span>` : `<span class="att-badge-leave">${leaveRec.type}</span> <span class="att-badge-ok">퇴근완료</span>`;
                     else if (shiftInfo.state === 'missed') statusHtml = `<span class="att-badge-leave">${leaveRec.type}</span> <span style="background:#fee2e2;color:#b91c1c;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:bold;">퇴근미체크</span>`;
-                    else statusHtml = `<span class="att-badge-leave">${leaveRec.type}</span> <span class="att-badge-work">근무중</span>`;
+                    else statusHtml = `<span class="att-badge-leave">${leaveRec.type}</span> <span class="att-badge-work">${isNight ? '야간근무중' : '근무중'}</span>`;
                 }
                 else if (leaveRec) statusHtml = `<span class="att-badge-leave">${leaveRec.type}</span>`;
-                else if (shiftInfo.state === 'done') statusHtml = `<span class="att-badge-ok">${shiftInfo.isNextDayOut ? '퇴근완료(익일)' : '퇴근완료'}</span>`;
+                else if (shiftInfo.state === 'done' && shiftInfo.isNextDayOut) statusHtml = `<span class="att-badge-work">${emp.workType === '당직직' ? '당직근무' : '야간근무'}</span>`;
+                else if (shiftInfo.state === 'done') statusHtml = `<span class="att-badge-ok">${emp.workType === '당직직' ? '당직퇴근완료' : (isNight ? '야간퇴근완료' : '퇴근완료')}</span>`;
                 else if (shiftInfo.state === 'missed') statusHtml = `<span style="background:#fee2e2;color:#b91c1c;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:bold;">퇴근미체크</span>`;
-                else if (inRec) statusHtml = `<span class="att-badge-work">근무중</span>`;
+                else if (inRec && holdRec) statusHtml = `<span class="att-badge-work" style="background:#e0e7ff;color:#4338ca;">야간유지</span>`;
+                else if (inRec) statusHtml = `<span class="att-badge-work">${isNight ? '야간근무중' : '근무중'}</span>`;
                 else if (shiftCycle.isOffDay) statusHtml = `<span class="att-badge-off">🌙 ${shiftCycle.label}</span>`;
 
-                const outTimeDisplay = outRec
-                    ? `${outRec.time}${shiftInfo.isNextDayOut ? ' <span style="font-size:11px;color:#4f46e5;">(익일)</span>' : ''}`
-                    : (shiftInfo.state === 'missed' ? '<span style="color:#dc2626;">퇴근미체크</span>' : '-');
+                // 주간/일반 출근 시각 셀 vs 야간출근 시각(당일) 셀 분리
+                const inCancelOnly = cancelledMark(emp.id, targetDate, '출근');
+                const dayInTagHtml = (inRec && !isNight && (emp.workType || '일반직') === '교대직')
+                    ? `<span class="att-shift-tag day-in">주간출근</span>`
+                    : '';
+                const inActionHtml = inRec
+                    ? `${inRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${targetDate}', '출근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}${isSuperAdminMode() ? ` <span onclick="cancelAttRecord(${emp.id}, '${targetDate}', '출근')" style="font-size:11px; color:#dc2626; cursor:pointer; text-decoration:underline;">(취소)</span>` : ''}${inCancelOnly}`
+                    : '';
+
+                const dayInTimeDisplay = (inRec && !isNight)
+                    ? `${inRec.time}${dayInTagHtml}${inActionHtml}`
+                    : `-${!inRec ? inCancelOnly : ''}`;
+
+                const nightInTimeDisplay = (inRec && isNight)
+                    ? `${inRec.time} <span class="att-shift-tag night-in">야간출근</span>${inActionHtml}`
+                    : `-`;
+
+                // 주간/일반 퇴근 시각 셀 vs 야간퇴근 시각(다음날짜) 셀 분리
+                const outCancelOnly = cancelledMark(emp.id, outDateForAction, '퇴근');
+                const outActionHtml = outRec
+                    ? `${outRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${outDateForAction}', '퇴근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}${isSuperAdminMode() ? ` <span onclick="cancelAttRecord(${emp.id}, '${outDateForAction}', '퇴근')" style="font-size:11px; color:#dc2626; cursor:pointer; text-decoration:underline;">(취소)</span>` : ''}${outCancelOnly}`
+                    : '';
+
+                let dayOutTimeDisplay = '-';
+                let nightOutTimeDisplay = '-';
+
+                if (isNight || shiftInfo.isNextDayOut) {
+                    // 야간근무의 퇴근은 다음날 행의 '전일 야간퇴근'에만 표기 (출근일 행은 비움)
+                    if (outRec && !shiftInfo.isNextDayOut) {
+                        const outActualDateStr = outRec.actualDate || (shiftInfo.isNextDayOut ? getAttNextDateStr(targetDate) : outRec.date);
+                        const nextDateBadge = (outActualDateStr && outActualDateStr !== targetDate)
+                            ? ` <span style="font-size:11px;color:#4f46e5;">(${outActualDateStr.slice(5)})</span>`
+                            : '';
+                        nightOutTimeDisplay = `${outRec.time}${nextDateBadge} <span class="att-shift-tag night-out">야간퇴근</span>${outActionHtml}`;
+                    } else if (shiftInfo.state === 'missed') {
+                        // 야간출근 행의 퇴근 칸은 공란 처리 (퇴근 기록이 없으면 '-')
+                        nightOutTimeDisplay = `-${outCancelOnly}`;
+                    }
+                    dayOutTimeDisplay = `-${!outRec && shiftInfo.state !== 'missed' ? outCancelOnly : ''}`;
+                } else {
+                    // 주간/일반근무의 퇴근은 '퇴근 시각' 열에 표기
+                    if (outRec) {
+                        dayOutTimeDisplay = `${outRec.time}${outActionHtml}`;
+                    } else if (shiftInfo.state === 'missed') {
+                        dayOutTimeDisplay = `<span style="color:#dc2626;">퇴근미체크</span>${outCancelOnly}`;
+                    } else {
+                        dayOutTimeDisplay = `-${outCancelOnly}`;
+                    }
+                }
+
+                // 전날 야간근무 후 당일 아침에 퇴근한 기록이 있는 경우 '야간퇴근 시각(다음날짜)' 열에 함께 안내
+                if (prevNightMissed && !morningNightOutRec) {
+                    const missLine = `<div style="color:#b91c1c; font-size:12px; font-weight:bold;">${prevDate.slice(5)} 야간 아침 퇴근미체크</div>`;
+                    nightOutTimeDisplay = nightOutTimeDisplay === '-' ? missLine : `${missLine}<div>${nightOutTimeDisplay}</div>`;
+                }
+                if (morningNightOutRec) {
+                    const prevOutLine = `<div style="color:#6d28d9; font-size:12px;">${morningNightOutRec.time} <span class="att-shift-tag night-out">전일 야간퇴근</span></div>`;
+                    nightOutTimeDisplay = nightOutTimeDisplay === '-'
+                        ? prevOutLine
+                        : `${prevOutLine}<div>${nightOutTimeDisplay}</div>`;
+                }
 
                 rows.push(`
                     <tr>
@@ -4941,6 +5097,7 @@ let deletedAttendanceLogs = [];
                                     <select onchange="updateEmpWorkTypeFromAtt(${emp.id}, this.value)" style="padding:3px 6px; font-size:12px; border:1px solid ${(emp.workType || '일반직') === '교대직' ? '#8b5cf6' : '#cbd5e1'}; border-radius:4px; background:${(emp.workType || '일반직') === '교대직' ? '#f5f3ff' : '#fff'}; color:${(emp.workType || '일반직') === '교대직' ? '#6d28d9' : '#334155'}; font-weight:bold; cursor:pointer;">
                                         <option value="일반직" ${(emp.workType || '일반직') !== '교대직' ? 'selected' : ''}>일반직</option>
                                         <option value="교대직" ${(emp.workType || '일반직') === '교대직' ? 'selected' : ''}>교대직</option>
+                                        <option value="당직직" ${(emp.workType || '일반직') === '당직직' ? 'selected' : ''}>당직직</option>
                                     </select>
                                     ${(emp.workType || '일반직') === '교대직'
                                         ? `<input type="date" value="${emp.shiftBaseDate || ''}" onchange="updateEmpShiftBaseFromAtt(${emp.id}, this.value)" title="교대 기준일 (첫 주간 근무 시작일)" style="padding:2px 4px; font-size:11px; border:1px solid #c4b5fd; border-radius:4px; width:112px;">`
@@ -4948,13 +5105,15 @@ let deletedAttendanceLogs = [];
                                    </div>`
                                 : ((emp.workType || '일반직') === '교대직'
                                     ? `<span style="background:#f3e8ff; color:#6b21a8; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:bold;">교대직</span>${emp.shiftBaseDate ? `<div style="font-size:10px; color:#6b21a8; margin-top:2px;">기준: ${emp.shiftBaseDate}</div>` : ''}`
-                                    : `<span style="color:#64748b; font-size:12px;">일반직</span>`)}
+                                    : `${(emp.workType || '일반직') === '당직직' ? '<span style="background:#ecfeff; color:#0e7490; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:bold;">당직직</span>' : '<span style="color:#64748b; font-size:12px;">일반직</span>'}`)}
                         </td>
                         <td>${statusHtml}</td>
-                        <td style="font-weight:bold; color:#2563eb;">${inRec ? inRec.time : '-'}${inRec && inRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${targetDate}', '출근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}${isSuperAdminMode() && inRec ? ` <span onclick="cancelAttRecord(${emp.id}, '${targetDate}', '출근')" style="font-size:11px; color:#dc2626; cursor:pointer; text-decoration:underline;">(취소)</span>` : ''}${cancelledMark(emp.id, targetDate, '출근')}</td>
-                        <td style="font-weight:bold;">${outTimeDisplay}${outRec && outRec.edited ? ` <span onclick="openAttHistory(${emp.id}, '${outDateForAction}', '퇴근')" style="font-size:11px; color:#d97706; cursor:pointer; text-decoration:underline;">(수정)</span>` : ''}${isSuperAdminMode() && outRec ? ` <span onclick="cancelAttRecord(${emp.id}, '${outDateForAction}', '퇴근')" style="font-size:11px; color:#dc2626; cursor:pointer; text-decoration:underline;">(취소)</span>` : ''}${cancelledMark(emp.id, outDateForAction, '퇴근')}</td>
+                        <td style="font-weight:bold; color:#2563eb;">${dayInTimeDisplay}</td>
+                        <td style="font-weight:bold;">${dayOutTimeDisplay}</td>
+                        <td style="font-weight:bold; color:#4338ca; background:#eef2ff55;">${nightInTimeDisplay}</td>
+                        <td style="font-weight:bold; color:#6d28d9; background:#f3e8ff55;">${nightOutTimeDisplay}</td>
                         <td>${inRec ? inRec.method : '-'}</td>
-                        <td>${outRec ? outRec.method : '-'}</td>
+                        <td>${outRec ? outRec.method : (morningNightOutRec ? morningNightOutRec.method : '-')}</td>
                         <td><button type="button" class="action-btn blue" style="padding:4px 8px; font-size:12px;" onclick="copyEmployeeLink(${emp.id})">📱 링크</button></td>
                         <td>${isSuperAdminMode() ? `<button type="button" class="action-btn yellow" style="padding:4px 8px; font-size:12px;" onclick="openAttEdit('${targetDate}', ${emp.id})">✏️ 수정</button>` : '-'}</td>
                     </tr>
@@ -4979,7 +5138,7 @@ let deletedAttendanceLogs = [];
             .filter(e => !e.retireDate && (!deptFilter || e.dept === deptFilter) && (!workTypeFilter || (e.workType || '일반직') === workTypeFilter) && (!nameFilter || String(e.name || '').includes(nameFilter)))
             .sort((a, b) => (a.no || 999) - (b.no || 999));
 
-        const rows = [['날짜', '번호', '부서', '이름', '직급', '근무형태', '휴가/비번여부', '출근시각', '퇴근시각', '출근인증', '퇴근인증', '수정여부', '수정이력', '취소여부', '취소이력']];
+        const rows = [['날짜', '번호', '부서', '이름', '직급', '근무형태', '교대/휴가상태', '출근시각', '퇴근시각', '야간출근시각(당일)', '야간퇴근시각(다음날짜)', '출근인증', '퇴근인증', '수정여부', '수정이력', '취소여부', '취소이력']];
         dates.forEach(targetDate => {
             sortedEmps.forEach(emp => {
                 const inRec = attendanceLogs.find(l => l.empId === emp.id && l.date === targetDate && l.type === '출근');
@@ -4987,9 +5146,16 @@ let deletedAttendanceLogs = [];
                 const outRec = shiftInfo.outRec;
                 const leaveRec = (emp.history || []).find(h => isApprovedLeave(h) && h.start <= targetDate && (h.end || h.start) >= targetDate);
                 const shiftCycle = getShiftWorkStatus(emp, targetDate);
-                const statusLabel = leaveRec ? leaveRec.type : (!inRec && shiftCycle.isOffDay ? shiftCycle.label : '');
+                const isNight = isNightShiftCheck(emp, targetDate, inRec, shiftInfo);
+                const statusLabel = leaveRec ? leaveRec.type : (isNight && inRec ? '야간근무' : (!inRec && shiftCycle.isOffDay ? shiftCycle.label : ''));
                 const edit = (inRec && inRec.edited) || (outRec && outRec.edited) ? 'Y' : '';
                 const hist = [attHistoryText(inRec, '출근'), attHistoryText(outRec, '퇴근')].filter(Boolean).join(' / ');
+                const dayInVal = (inRec && !isNight) ? inRec.time : '';
+                const nightInVal = (inRec && isNight) ? inRec.time : '';
+                const dayOutVal = (outRec && !(isNight || shiftInfo.isNextDayOut)) ? outRec.time : '';
+                const nightOutVal = (outRec && (isNight || shiftInfo.isNextDayOut))
+                    ? (outRec.time + (shiftInfo.isNextDayOut ? ` (${(outRec.actualDate || getAttNextDateStr(targetDate)).slice(5)})` : ''))
+                    : '';
                 rows.push([
                     targetDate,
                     emp.no || '',
@@ -4998,9 +5164,10 @@ let deletedAttendanceLogs = [];
                     emp.position || '',
                     emp.workType || '일반직',
                     statusLabel,
-                    inRec ? inRec.time : '',
-                    inRec ? inRec.time : '',
-                    outRec ? (outRec.time + (shiftInfo.isNextDayOut ? ' (익일)' : '')) : '',
+                    dayInVal,
+                    dayOutVal,
+                    nightInVal,
+                    nightOutVal,
                     inRec ? inRec.method : '',
                     outRec ? outRec.method : '',
                     edit,
@@ -5017,6 +5184,30 @@ let deletedAttendanceLogs = [];
         XLSX.writeFile(wb, `출퇴근기록_${startDate}_${endDate}.xlsx`);
     }
 
+    let attCalDisplayMode = 'summary'; // 'summary' (전체 요약) | 'detail' (직원별 상세)
+
+    function syncAttCalModeButtons() {
+        const sBtn = document.getElementById('attCalModeSummaryBtn');
+        const dBtn = document.getElementById('attCalModeDetailBtn');
+        if (!sBtn || !dBtn) return;
+        sBtn.classList.toggle('active', attCalDisplayMode === 'summary');
+        dBtn.classList.toggle('active', attCalDisplayMode === 'detail');
+    }
+
+    function setAttCalDisplayMode(mode) {
+        attCalDisplayMode = mode === 'detail' ? 'detail' : 'summary';
+        syncAttCalModeButtons();
+        renderAttCalendar();
+    }
+
+    function handleAttCalTeamChange() {
+        const teamSel = document.getElementById('attCalTeamFilter');
+        const val = teamSel ? teamSel.value : '';
+        attCalDisplayMode = val ? 'detail' : 'summary';
+        syncAttCalModeButtons();
+        renderAttCalendar();
+    }
+
     function renderAttCalendar() {
         const calEl = document.getElementById('attendanceCalendar');
         if (!calEl) return;
@@ -5030,17 +5221,19 @@ let deletedAttendanceLogs = [];
             });
         }
 
-        // 상단 접속 팀과 연동된 팀 필터 적용 (전체(총괄 관리자)인 경우 '' 전체보기)
         const teamFilter = teamSel ? teamSel.value : '';
         const includeLeave = document.getElementById('attCalIncludeLeave').checked;
         const events = [];
+        syncAttCalModeButtons();
 
-        // [모드 A] 특정 팀 필터 선택 시: 해당 팀원 전체를 개별 이름으로 상세 표기
-        if (teamFilter) {
+        // [모드 A] 직원별 상세 보기 (방식 A 적용: 야간근무는 출근일과 익일 아침 퇴근일로 분할 표기)
+        if (attCalDisplayMode === 'detail') {
             const dailyAttMap = new Map();
             attendanceLogs.forEach(log => {
                 const emp = employees.find(e => e.id === log.empId);
-                if (!emp || emp.dept !== teamFilter) return;
+                if (!emp) return;
+                if (teamFilter && emp.dept !== teamFilter) return;
+
                 if (log.type === '출근') {
                     const key = `${log.empId}_${log.date}`;
                     const shiftInfo = getShiftStatusForInRec(emp.id, log.date, log);
@@ -5049,6 +5242,7 @@ let deletedAttendanceLogs = [];
                         date: log.date,
                         inTime: log.time,
                         outTime: shiftInfo.outRec ? shiftInfo.outRec.time : null,
+                        outDate: shiftInfo.outRec ? (shiftInfo.outRec.actualDate || shiftInfo.outRec.date) : null,
                         inMethod: log.method,
                         outMethod: shiftInfo.outRec ? shiftInfo.outRec.method : '',
                         state: shiftInfo.state,
@@ -5056,9 +5250,11 @@ let deletedAttendanceLogs = [];
                     });
                 } else if (log.type === '퇴근') {
                     const prevDate = log.shiftDate || getAttPrevDateStr(log.date);
-                    const hasSameDayIn = attendanceLogs.some(x => x.empId === emp.id && x.date === log.date && x.type === '출근');
+                    const sameDayInRec = attendanceLogs.find(x => x.empId === emp.id && x.date === log.date && x.type === '출근');
+                    const hasSameDayIn = !!sameDayInRec;
                     const hasPrevDayIn = attendanceLogs.some(x => x.empId === emp.id && x.date === prevDate && x.type === '출근');
-                    if (!hasSameDayIn && hasPrevDayIn) return;
+                    const isOwnOut = !sameDayInRec || isOwnOutRec(log, sameDayInRec);
+                    if (!isOwnOut && hasPrevDayIn) return;
                     const key = `${log.empId}_${log.date}`;
                     if (!dailyAttMap.has(key)) {
                         dailyAttMap.set(key, {
@@ -5066,6 +5262,7 @@ let deletedAttendanceLogs = [];
                             date: log.date,
                             inTime: null,
                             outTime: log.time,
+                            outDate: log.actualDate || log.date,
                             inMethod: '',
                             outMethod: log.method,
                             state: 'done',
@@ -5077,53 +5274,142 @@ let deletedAttendanceLogs = [];
 
             dailyAttMap.forEach(item => {
                 const inStr = item.inTime ? item.inTime.slice(0, 5) : '--:--';
-                let outStr = '근무중';
-                let color = '#059669';
-                if (item.state === 'done' && item.outTime) {
-                    outStr = item.outTime.slice(0, 5) + (item.isNextDayOut ? '(익일)' : '');
-                    color = item.isNextDayOut ? '#4f46e5' : '#0284c7';
-                } else if (item.state === 'missed') {
-                    outStr = '퇴근미체크';
-                    color = '#dc2626';
-                }
+                const prefix = teamFilter ? `[${item.emp.name}]` : `[${item.emp.dept}/${item.emp.name}]`;
+                const shiftCycle = getShiftWorkStatus(item.emp, item.date);
+                const isNight = isNightShiftCheck(item.emp, item.date, { time: item.inTime }, { isNextDayOut: item.isNextDayOut });
+                const nightWord = (item.emp.workType === '당직직') ? '당직' : '야간';
 
-                events.push({
-                    title: `[${item.emp.name}] ${inStr}~${outStr}`,
-                    start: item.date,
-                    allDay: true,
-                    backgroundColor: color,
-                    borderColor: color,
-                    extendedProps: {
-                        kind: 'attendance',
-                        empName: item.emp.name,
-                        dept: item.emp.dept,
-                        date: item.date,
-                        inTime: item.inTime || '미기록',
-                        outTime: item.outTime ? (item.outTime + (item.isNextDayOut ? ' (익일 퇴근)' : '')) : (item.state === 'missed' ? '퇴근미체크 (20시간 초과)' : '근무중'),
-                        inMethod: item.inMethod || '-',
-                        outMethod: item.outMethod || '-'
+                // 방식 A: 야간근무(익일 퇴근 또는 야간 교대/야간 시간대 출근)는 출근일과 익일 퇴근일 양쪽 칸에 분할 표기
+                if (isNight) {
+                    const nextDateStr = item.outDate && item.outDate !== item.date ? item.outDate : getAttNextDateStr(item.date);
+                    const outStatusText = item.state === 'done' && item.outTime
+                        ? `${item.outTime.slice(0, 5)} (익일 ${nightWord}퇴근)`
+                        : (item.state === 'missed' ? '퇴근미체크 (마감 초과)' : '야간근무중');
+
+                    // 1) 출근일 칸: 야간출근 표기 (오후 시간대이므로 sortOrder=3으로 아침 야간퇴근 뒤에 정렬)
+                    events.push({
+                        title: `${prefix} ${inStr} 출근(${nightWord})${item.state === 'missed' ? ' ⚠️' : ''}`,
+                        start: item.date,
+                        allDay: true,
+                        backgroundColor: item.state === 'missed' ? '#dc2626' : '#4338ca',
+                        borderColor: item.state === 'missed' ? '#dc2626' : '#4338ca',
+                        extendedProps: {
+                            sortOrder: 3,
+                            empNo: item.emp.no || 999,
+                            kind: 'attendance',
+                            empName: item.emp.name,
+                            dept: item.emp.dept,
+                            date: `${item.date} (야간근무 시작)`,
+                            inTime: item.inTime || '미기록',
+                            outTime: outStatusText,
+                            inMethod: item.inMethod || '-',
+                            outMethod: item.outMethod || '-'
+                        }
+                    });
+
+                    // 2) 익일 칸: 야간퇴근 완료 시 아침 야간퇴근 배지 추가 (sortOrder=1로 해당 날짜 최상단 배치)
+                    if (item.state === 'done' && item.outTime) {
+                        const outStr = item.outTime.slice(0, 5);
+                        events.push({
+                            title: `${prefix} ~${outStr} ${nightWord}퇴근`,
+                            // 야간퇴근은 실제 퇴근한 날(익일, 예: 16일) 캘린더 칸에 표시
+                            start: nextDateStr,
+                            allDay: true,
+                            backgroundColor: '#6d28d9',
+                            borderColor: '#6d28d9',
+                            extendedProps: {
+                                sortOrder: 1,
+                                empNo: item.emp.no || 999,
+                                kind: 'attendance',
+                                empName: item.emp.name,
+                                dept: item.emp.dept,
+                                date: `${item.date} (야간근무 종료, 실제 퇴근일 ${nextDateStr})`,
+                                inTime: `${item.date} ${item.inTime || '미기록'}`,
+                                outTime: `${nextDateStr} ${item.outTime}`,
+                                inMethod: item.inMethod || '-',
+                                outMethod: item.outMethod || '-'
+                            }
+                        });
                     }
-                });
+                    // 3) 익일 칸: 야간 아침 퇴근 미체크 (마감 초과) 표시
+                    if (item.state === 'missed') {
+                        events.push({
+                            title: `${prefix} 퇴근미체크 ⚠️ (${item.date} 야간)`,
+                            start: nextDateStr,
+                            allDay: true,
+                            backgroundColor: '#dc2626',
+                            borderColor: '#dc2626',
+                            extendedProps: {
+                                sortOrder: 1,
+                                empNo: item.emp.no || 999,
+                                kind: 'attendance',
+                                empName: item.emp.name,
+                                dept: item.emp.dept,
+                                date: `${item.date} (야간근무 종료 미체크)`,
+                                inTime: `${item.date} ${item.inTime || '미기록'}`,
+                                outTime: '퇴근미체크 (마감 초과)',
+                                inMethod: item.inMethod || '-',
+                                outMethod: '-'
+                            }
+                        });
+                    }
+                } else {
+                    // 일반 주간 근무: 기존과 동일하게 당일 칸에 1건으로 표기
+                    let outStr = '근무중';
+                    let color = '#059669';
+                    let sortOrder = 2;
+                    if (item.state === 'done' && item.outTime) {
+                        outStr = item.outTime.slice(0, 5);
+                        color = '#0284c7';
+                    } else if (item.state === 'missed') {
+                        outStr = '퇴근미체크';
+                        color = '#dc2626';
+                        sortOrder = 4;
+                    }
+
+                    events.push({
+                        title: `${prefix} ${inStr}~${outStr}`,
+                        start: item.date,
+                        allDay: true,
+                        backgroundColor: color,
+                        borderColor: color,
+                        extendedProps: {
+                            sortOrder,
+                            empNo: item.emp.no || 999,
+                            kind: 'attendance',
+                            empName: item.emp.name,
+                            dept: item.emp.dept,
+                            date: item.date,
+                            inTime: item.inTime || '미기록',
+                            outTime: item.outTime || (item.state === 'missed' ? '퇴근미체크 (마감 초과)' : '근무중'),
+                            inMethod: item.inMethod || '-',
+                            outMethod: item.outMethod || '-'
+                        }
+                    });
+                }
             });
 
             if (includeLeave) {
                 employees.forEach(emp => {
-                    if (emp.dept !== teamFilter) return;
+                    if (teamFilter && emp.dept !== teamFilter) return;
                     (emp.history || []).forEach(h => {
                         if (!isApprovedLeave(h)) return;
                         const endDateObj = new Date(h.end || h.start);
                         endDateObj.setDate(endDateObj.getDate() + 1);
                         const formattedEndDate = endDateObj.toISOString().split('T')[0];
                         const color = getLeaveColor(h.type);
+                        const prefix = teamFilter ? `[${emp.name}]` : `[${emp.dept}/${emp.name}]`;
 
                         events.push({
-                            title: `📅 [${emp.name}] ${h.type} (${h.days}일)`,
+                            title: `📅 ${prefix} ${h.type} (${h.days}일)`,
                             start: h.start,
                             end: formattedEndDate,
                             allDay: true,
                             backgroundColor: color,
                             borderColor: color,
                             extendedProps: {
+                                sortOrder: 5,
+                                empNo: emp.no || 999,
                                 kind: 'leave',
                                 empName: emp.name,
                                 dept: emp.dept,
@@ -5138,13 +5424,21 @@ let deletedAttendanceLogs = [];
                 });
             }
         }
-        // [모드 B] 전체보기 (70명 규모): 날짜별 출근/연차/미출근 요약 배지 표기 (클릭 시 전체 명단 팝업)
+        // [모드 B] 인원 요약 보기 (전체 70명 기준 날짜별 주간출근/야간출근/연차/교대비번/미출근 요약 배지)
         else {
-            const activeEmps = employees.filter(e => !e.retireDate).sort((a, b) => (a.no || 999) - (b.no || 999));
+            const activeEmps = employees.filter(e => !e.retireDate && (!teamFilter || e.dept === teamFilter))
+                .sort((a, b) => (a.no || 999) - (b.no || 999));
             const todayStr = getAttTodayStr();
 
             const dateSet = new Set([todayStr]);
-            attendanceLogs.forEach(l => { if (l.date) dateSet.add(l.date); });
+            attendanceLogs.forEach(l => {
+                if (!l.date) return;
+                if (teamFilter) {
+                    const emp = employees.find(e => e.id === l.empId);
+                    if (!emp || emp.dept !== teamFilter) return;
+                }
+                dateSet.add(l.date);
+            });
             activeEmps.forEach(emp => {
                 (emp.history || []).forEach(h => {
                     if (!isApprovedLeave(h)) return;
@@ -5154,10 +5448,12 @@ let deletedAttendanceLogs = [];
 
             dateSet.forEach(dateStr => {
                 const targetEmps = activeEmps.filter(e => !e.joinDate || e.joinDate <= dateStr);
-                const inList = [];
+                const dayInList = [];
+                const nightInList = [];
                 const leaveList = [];
                 const offList = [];
                 const absentList = [];
+                const missOutList = [];
 
                 targetEmps.forEach(emp => {
                     const inRec = attendanceLogs.find(l => l.empId === emp.id && l.date === dateStr && l.type === '출근');
@@ -5165,33 +5461,52 @@ let deletedAttendanceLogs = [];
                     const outRec = shiftInfo.outRec;
                     const leaveRec = (emp.history || []).find(h => isApprovedLeave(h) && h.start <= dateStr && (h.end || h.start) >= dateStr);
                     const shiftCycle = getShiftWorkStatus(emp, dateStr);
+                    const isNight = isNightShiftCheck(emp, dateStr, inRec, shiftInfo);
 
                     if (inRec) {
                         const outLabel = outRec
                             ? (outRec.time.slice(0, 5) + (shiftInfo.isNextDayOut ? '(익일)' : ''))
                             : (shiftInfo.state === 'missed' ? '퇴근미체크' : '근무중');
-                        inList.push(`[${emp.dept}] ${emp.name} (${inRec.time.slice(0, 5)}~${outLabel})`);
+                        const tagText = (shiftCycle.isShift || shiftCycle.phase === 'duty') ? ` · ${shiftCycle.label}` : '';
+                        const entryText = `[${emp.dept}] ${emp.name} ${emp.position}${tagText} (${inRec.time.slice(0, 5)}~${outLabel})`;
+                        if (isNight) nightInList.push(entryText);
+                        else dayInList.push(entryText);
                     }
                     if (leaveRec) {
-                        leaveList.push(`[${emp.dept}] ${emp.name} - ${leaveRec.type}`);
+                        leaveList.push(`[${emp.dept}] ${emp.name} ${emp.position} - ${leaveRec.type}`);
                     }
                     if (!inRec && !leaveRec && shiftCycle.isOffDay) {
-                        offList.push(`[${emp.dept}] ${emp.name} (${shiftCycle.label})`);
+                        offList.push(`[${emp.dept}] ${emp.name} ${emp.position} (${shiftCycle.label})`);
                     }
                     const dayOfWeek = new Date(dateStr + 'T00:00:00').getDay();
-                    if (!inRec && !leaveRec && !shiftCycle.isOffDay && dateStr <= todayStr && dayOfWeek !== 0 && dayOfWeek !== 6) {
+                    const prevDateStr = getAttPrevDateStr(dateStr);
+                    const prevIn = attendanceLogs.find(l => l.empId === emp.id && l.date === prevDateStr && l.type === '출근');
+                    if (prevIn && getShiftWorkStatus(emp, prevDateStr).phase === 'night' && getShiftStatusForInRec(emp.id, prevDateStr, prevIn).state === 'missed') {
+                        missOutList.push(`[${emp.dept}] ${emp.name} ${emp.position} · 야간 (${prevDateStr} ${prevIn.time.slice(0, 5)} 출근, 퇴근미체크)`);
+                    }
+                    if (!inRec && !leaveRec && !shiftCycle.isOffDay && dateStr <= todayStr && dayOfWeek !== 0 && dayOfWeek !== 6 && !(shiftCycle.phase === 'night' && dateStr === todayStr && new Date().toTimeString().slice(0, 5) < NIGHT_SHIFT_IN_DEADLINE)) {
                         absentList.push(`[${emp.dept}] ${emp.name} ${emp.position}`);
                     }
                 });
 
-                if (inList.length > 0) {
+                if (dayInList.length > 0) {
                     events.push({
-                        title: `🟢 출근: ${inList.length}명`,
+                        title: `🟢 주간출근: ${dayInList.length}명`,
                         start: dateStr,
                         allDay: true,
                         backgroundColor: '#059669',
                         borderColor: '#059669',
-                        extendedProps: { kind: 'summary', category: '출근자 명단', date: dateStr, list: inList }
+                        extendedProps: { sortOrder: 1, empNo: 0, kind: 'summary', category: '주간 출근자 명단', date: dateStr, list: dayInList }
+                    });
+                }
+                if (nightInList.length > 0) {
+                    events.push({
+                        title: `🌃 야간출근: ${nightInList.length}명`,
+                        start: dateStr,
+                        allDay: true,
+                        backgroundColor: '#4338ca',
+                        borderColor: '#4338ca',
+                        extendedProps: { sortOrder: 2, empNo: 0, kind: 'summary', category: '야간 출근자 명단', date: dateStr, list: nightInList }
                     });
                 }
                 if (includeLeave && leaveList.length > 0) {
@@ -5201,7 +5516,7 @@ let deletedAttendanceLogs = [];
                         allDay: true,
                         backgroundColor: '#2563eb',
                         borderColor: '#2563eb',
-                        extendedProps: { kind: 'summary', category: '연차/휴가자 명단', date: dateStr, list: leaveList }
+                        extendedProps: { sortOrder: 3, empNo: 0, kind: 'summary', category: '연차/휴가자 명단', date: dateStr, list: leaveList }
                     });
                 }
                 if (offList.length > 0) {
@@ -5211,17 +5526,27 @@ let deletedAttendanceLogs = [];
                         allDay: true,
                         backgroundColor: '#7c3aed',
                         borderColor: '#7c3aed',
-                        extendedProps: { kind: 'summary', category: '교대 비번자 명단', date: dateStr, list: offList }
+                        extendedProps: { sortOrder: 4, empNo: 0, kind: 'summary', category: '교대 비번자 명단', date: dateStr, list: offList }
                     });
                 }
-                if (absentList.length > 0 && (inList.length > 0 || leaveList.length > 0 || offList.length > 0)) {
+                if (missOutList.length > 0) {
+                    events.push({
+                        title: `⛔ 퇴근미체크: ${missOutList.length}명`,
+                        start: dateStr,
+                        allDay: true,
+                        backgroundColor: '#dc2626',
+                        borderColor: '#dc2626',
+                        extendedProps: { sortOrder: 0, empNo: 0, kind: 'summary', category: '야간 퇴근미체크 명단', date: dateStr, list: missOutList }
+                    });
+                }
+                if (absentList.length > 0 && (dayInList.length > 0 || nightInList.length > 0 || leaveList.length > 0 || offList.length > 0)) {
                     events.push({
                         title: `⚠️ 미출근: ${absentList.length}명`,
                         start: dateStr,
                         allDay: true,
                         backgroundColor: '#dc2626',
                         borderColor: '#dc2626',
-                        extendedProps: { kind: 'summary', category: '미출근자 명단', date: dateStr, list: absentList }
+                        extendedProps: { sortOrder: 5, empNo: 0, kind: 'summary', category: '미출근자 명단', date: dateStr, list: absentList }
                     });
                 }
             });
@@ -5242,6 +5567,16 @@ let deletedAttendanceLogs = [];
                 left: 'prev,next today',
                 center: 'title',
                 right: 'dayGridMonth,timeGridWeek'
+            },
+            dayMaxEvents: attCalDisplayMode === 'detail' ? 8 : false,
+            moreLinkText: n => `+${n}명 더보기`,
+            eventOrder: (a, b) => {
+                const oa = (a.extendedProps && a.extendedProps.sortOrder) || 9;
+                const ob = (b.extendedProps && b.extendedProps.sortOrder) || 9;
+                if (oa !== ob) return oa - ob;
+                const na = (a.extendedProps && a.extendedProps.empNo) || 999;
+                const nb = (b.extendedProps && b.extendedProps.empNo) || 999;
+                return na - nb;
             },
             events: events,
             eventClick: function(info) {
@@ -5558,8 +5893,8 @@ async function punchRecord(type) {
             } else if (hasActiveYestShift) {
                 targetShiftDate = yesterday;
             } else if (yestIn && yestShift.state === 'missed') {
-                setPunchMsg(`전날(${yesterday}) 출근 후 20시간이 경과하여 자동 [퇴근미체크] 처리되었습니다.`, true);
-                return;
+                // 기준 시간이 지나도 늦은 퇴근(당직 등)은 전날 근무의 퇴근으로 기록 허용
+                targetShiftDate = yesterday;
             } else if (todayOut) {
                 setPunchMsg('오늘은 이미 퇴근 기록이 있습니다.', true);
                 return;
@@ -5787,6 +6122,13 @@ async function cancelAttRecord(empId, date, type) {
             ));
             if (type === '출근' && hasLinkedOut) {
                 throw new Error('퇴근 기록을 먼저 취소해야 출근을 취소할 수 있습니다.');
+            }
+            if (type === '출근') {
+                for (let i = arr.length - 1; i >= 0; i--) {
+                    if (arr[i].empId === empId && arr[i].date === date && arr[i].type === '야간유지') {
+                        deleted.push({ record: arr.splice(i, 1)[0], reason, by: '총괄관리자', at: new Date().toISOString() });
+                    }
+                }
             }
             const idx = arr.findIndex(l => l.empId === empId && l.date === date && l.type === type);
             if (idx < 0) throw new Error('취소할 기록이 없습니다.');
