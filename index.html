@@ -5661,6 +5661,13 @@ let deletedAttendanceLogs = [];
                     eachDate(h.start, h.end || h.start).forEach(d => dateSet.add(d));
                 });
             });
+            // 출퇴근·연차 기록이 전혀 없는 평일에도 미출근·교대비번·전일 퇴근미체크 요약을 집계할 수 있도록 날짜 범위 보강
+            const summaryBaseObj = new Date(todayStr + 'T00:00:00');
+            for (let offset = -31; offset <= 7; offset++) {
+                const dObj = new Date(summaryBaseObj.getTime() + offset * 86400000);
+                const dStr = `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}-${String(dObj.getDate()).padStart(2, '0')}`;
+                dateSet.add(dStr);
+            }
 
             dateSet.forEach(dateStr => {
                 const targetEmps = activeEmps.filter(e => !e.joinDate || e.joinDate <= dateStr);
