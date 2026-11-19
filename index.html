@@ -5562,6 +5562,83 @@ let deletedAttendanceLogs = [];
                     });
                 });
             }
+
+            // [모드 A-2] 직원별 상세 보기 - 미출근 배지 생성 (주간/야간 교대 및 일반직/당직직 반영)
+            const detailAbsentCandidates = employees.filter(emp => {
+                if (emp.retireDate) return false;
+                if (teamFilter && emp.dept !== teamFilter) return false;
+                return true;
+            });
+
+            const detailDateSet = new Set();
+            dailyAttMap.forEach(item => {
+                if (item.date) detailDateSet.add(item.date);
+                if (item.outDate) detailDateSet.add(item.outDate);
+            });
+            if (includeLeave) {
+                detailAbsentCandidates.forEach(emp => {
+                    (emp.history || []).forEach(h => {
+                        if (!isApprovedLeave(h)) return;
+                        eachDate(h.start, h.end || h.start).forEach(d => detailDateSet.add(d));
+                    });
+                });
+            }
+            const todayDateObj = new Date(getAttTodayStr() + 'T00:00:00');
+            for (let offset = -14; offset <= 7; offset++) {
+                const dObj = new Date(todayDateObj.getTime() + offset * 86400000);
+                const dStr = `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}-${String(dObj.getDate()).padStart(2, '0')}`;
+                detailDateSet.add(dStr);
+            }
+
+            const todayStrDetail = getAttTodayStr();
+            const nowTimeHhMm = new Date().toTimeString().slice(0, 5);
+
+            detailDateSet.forEach(dateStr => {
+                detailAbsentCandidates.forEach(emp => {
+                    if (emp.joinDate && emp.joinDate > dateStr) return;
+
+                    const hasIn = attendanceLogs.some(l => l.empId === emp.id && l.date === dateStr && l.type === '출근');
+                    if (hasIn) return;
+
+                    const hasLeave = includeLeave && (emp.history || []).some(
+                        h => isApprovedLeave(h) && h.start <= dateStr && (h.end || h.start) >= dateStr
+                    );
+                    if (hasLeave) return;
+
+                    const shiftCycle = getShiftWorkStatus(emp, dateStr);
+                    if (shiftCycle.isOffDay) return;
+
+                    if (dateStr > todayStrDetail) return;
+
+                    if (shiftCycle.isShift) {
+                        if (shiftCycle.phase === 'night' && dateStr === todayStrDetail && nowTimeHhMm < NIGHT_SHIFT_IN_DEADLINE) {
+                            return;
+                        }
+                    } else {
+                        const dow = new Date(dateStr + 'T00:00:00').getDay();
+                        if (dow === 0 || dow === 6) return;
+                    }
+
+                    const prefix = teamFilter ? `[${emp.name}]` : `[${emp.dept}/${emp.name}]`;
+                    const shiftSuffix = shiftCycle.isShift ? ` (${shiftCycle.label})` : '';
+                    events.push({
+                        title: `${prefix} 미출근${shiftSuffix}`,
+                        start: dateStr,
+                        allDay: true,
+                        backgroundColor: '#dc2626',
+                        borderColor: '#dc2626',
+                        extendedProps: {
+                            sortOrder: 4,
+                            empNo: emp.no || 999,
+                            kind: 'absent',
+                            empName: emp.name,
+                            dept: emp.dept,
+                            date: dateStr,
+                            shiftLabel: shiftCycle.label
+                        }
+                    });
+                });
+            });
         }
         // [모드 B] 인원 요약 보기 (전체 70명 기준 날짜별 주간출근/야간출근/연차/교대비번/미출근 요약 배지)
         else {
@@ -5678,7 +5755,7 @@ let deletedAttendanceLogs = [];
                         extendedProps: { sortOrder: 0, empNo: 0, kind: 'summary', category: '야간 퇴근미체크 명단', date: dateStr, list: missOutList }
                     });
                 }
-                if (absentList.length > 0 && (dayInList.length > 0 || nightInList.length > 0 || leaveList.length > 0 || offList.length > 0)) {
+                if (absentList.length > 0) {
                     events.push({
                         title: `⚠️ 미출근: ${absentList.length}명`,
                         start: dateStr,
